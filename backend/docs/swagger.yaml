@@ -1,0 +1,2686 @@
+openapi: 3.0.3
+
+info:
+  title: Ridezy API
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:5000
+
+# Every operation requires a JWT unless it overrides this with `security: []`.
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Authentication
+    description: "**Implemented.** Registration, email OTP verification, login and current user."
+  - name: Passenger
+    description: "**Implemented.** Passenger profile and saved places. Role: PASSENGER."
+  - name: Driver
+    description: "**Implemented.** Driver profile and vehicle. Role: DRIVER."
+  - name: Driver Documents
+    description: "**Implemented.** Aadhaar and driving licence submitted by drivers for verification. Role: DRIVER."
+  - name: Driver Location
+    description: "**Implemented.** Driver availability (online/offline) and current location. Role: DRIVER."
+  - name: Rides
+    description: "**Implemented** (history, start and complete are planned). Fare estimate, booking, ride details, cancellation, and driver accept/reject."
+  - name: Ride Matching
+    description: "Matching runs inside the backend when a ride is booked (implemented as a service, no public endpoint). The endpoints below are **planned**."
+  - name: Payments
+    description: "**Planned.** Ride payments and payment history."
+  - name: Ratings & Reviews
+    description: "**Planned.** Post-ride ratings between passenger and driver."
+  - name: Notifications
+    description: "**Planned.** In-app notifications."
+  - name: Admin
+    description: "**Partly implemented.** Driver verification is implemented; user/ride/payment management and analytics are planned. Role: ADMIN."
+  - name: Health
+    description: "**Implemented.** Liveness and database status."
+
+paths:
+  # ===========================================================================
+  # AUTHENTICATION (implemented)
+  # ===========================================================================
+  /api/auth/register:
+    post:
+      tags: [Authentication]
+      operationId: register
+      x-status: implemented
+      x-required-role: none
+      summary: Register a passenger or driver
+      description: |
+        **Auth:** none · **Rate limit:** 20 requests / 15 min per IP.
+
+        Creates an unverified account and emails a 6-digit OTP (valid 10 minutes).
+        `role` must be `PASSENGER` or `DRIVER`; **ADMIN cannot be registered publicly**
+        (admins are created with the `npm run create-admin` script).
+        Password: 8–72 bytes with an uppercase letter, a lowercase letter and a digit.
+        The OTP is never returned in the response.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterRequest" }
+            example:
+              name: Saumya Singh
+              email: saumya@example.com
+              phone: "9876543210"
+              password: StrongPassword123
+              role: PASSENGER
+      responses:
+        "201":
+          description: Account created and verification email sent.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+              example: { success: true, message: Registration successful. Verification email sent successfully. }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "409":
+          description: Email or phone already registered.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                email: { value: { success: false, message: An account with this email already exists. } }
+                phone: { value: { success: false, message: An account with this phone number already exists. } }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503":
+          description: Account created but the email could not be sent. Use `POST /api/auth/resend-otp`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example: { success: false, message: "Account created, but we couldn't send the verification email. Please request a new code." }
+
+  /api/auth/verify-email:
+    post:
+      tags: [Authentication]
+      operationId: verifyEmail
+      x-status: implemented
+      x-required-role: none
+      summary: Verify email with the 6-digit OTP
+      description: |
+        **Auth:** none · **Rate limit:** 20 requests / 15 min per IP.
+
+        Marks the email as verified. An OTP is single-use, expires after 10 minutes and allows
+        5 attempts; after that a new code must be requested. Unknown email, wrong code, expired
+        code and used code all return the same message so the endpoint reveals nothing.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VerifyEmailRequest" }
+            example: { email: saumya@example.com, otp: "482913" }
+      responses:
+        "200":
+          description: Email verified.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+              example: { success: true, message: Email verified successfully. You can now log in. }
+        "400":
+          description: Validation failed, invalid/expired OTP, or email already verified.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                invalidOtp: { value: { success: false, message: Invalid or expired OTP. } }
+                alreadyVerified: { value: { success: false, message: Email is already verified. } }
+        "429":
+          description: Attempt limit reached for this OTP, or IP rate limit.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example: { success: false, message: Too many incorrect attempts. Please request a new code. }
+
+  /api/auth/resend-otp:
+    post:
+      tags: [Authentication]
+      operationId: resendOtp
+      x-status: implemented
+      x-required-role: none
+      summary: Send a new verification OTP
+      description: |
+        **Auth:** none · **Rate limit:** 5 requests / hour per IP, plus a 60-second cooldown per account.
+
+        Replaces any previous OTP (only one active OTP per user). The response is identical whether
+        or not the email exists or is already verified, to prevent account enumeration.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EmailRequest" }
+            example: { email: saumya@example.com }
+      responses:
+        "200":
+          description: Generic confirmation (sent if an unverified account exists).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+              example: { success: true, message: "If an unverified account exists for this email, a new verification code has been sent." }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "429":
+          description: Cooldown active (60 s since the last code) or IP rate limit.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example: { success: false, message: Please wait before requesting another code. }
+
+  /api/auth/login:
+    post:
+      tags: [Authentication]
+      operationId: login
+      x-status: implemented
+      x-required-role: none
+      summary: Log in and receive a JWT
+      description: |
+        **Auth:** none · **Rate limit:** 10 failed attempts / 15 min per IP.
+
+        Returns a JWT (default lifetime 7 days) and the public user. Unknown email and wrong password
+        return the same 401 message. Unverified accounts get 403 (only after a correct password).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+            example: { email: saumya@example.com, password: StrongPassword123 }
+      responses:
+        "200":
+          description: Logged in.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401":
+          description: Wrong email or password.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example: { success: false, message: Invalid email or password. }
+        "403":
+          description: Email not verified yet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example: { success: false, message: Please verify your email before logging in. }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /api/auth/me:
+    get:
+      tags: [Authentication]
+      operationId: getMe
+      x-status: implemented
+      x-required-role: any
+      summary: Get the authenticated user
+      description: "**Auth:** Bearer JWT · **Role:** any. Returns the current user from the database (never the password)."
+      responses:
+        "200":
+          description: Current user.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { type: boolean, example: true }
+                  data: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ===========================================================================
+  # PASSENGER (implemented)
+  # ===========================================================================
+  /api/passengers/profile:
+    post:
+      tags: [Passenger]
+      operationId: createPassengerProfile
+      x-status: implemented
+      x-required-role: PASSENGER
+      summary: Create the passenger profile
+      description: |
+        **Auth:** Bearer JWT · **Role:** PASSENGER.
+
+        Creates the caller's profile (one per passenger). The owner is taken from the JWT;
+        any `userId` in the body is ignored. `phone` is stored on the user account.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PassengerProfileInput" }
+            example: { phone: "9876543210", gender: FEMALE, dateOfBirth: "2003-04-15" }
+      responses:
+        "201":
+          description: Profile created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PassengerProfileResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: Profile already exists, or phone number used by another account.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example: { success: false, message: Passenger profile already exists. Use PATCH to update it. }
+    get:
+      tags: [Passenger]
+      operationId: getPassengerProfile
+      x-status: implemented
+      x-required-role: PASSENGER
+      summary: Get the passenger profile
+      description: "**Auth:** Bearer JWT · **Role:** PASSENGER. Returns the caller's profile with name, email and phone."
+      responses:
+        "200":
+          description: Profile.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PassengerProfileResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Passenger]
+      operationId: updatePassengerProfile
+      x-status: implemented
+      x-required-role: PASSENGER
+      summary: Update the passenger profile
+      description: |
+        **Auth:** Bearer JWT · **Role:** PASSENGER.
+
+        Partial update; at least one field is required. `null` clears `profileImage`,
+        `dateOfBirth` or `gender`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PassengerProfileInput" }
+            example: { phone: "9876543210", profileImage: "https://example.com/profile.jpg", dateOfBirth: "2003-04-15" }
+      responses:
+        "200":
+          description: Profile updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PassengerProfileResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      tags: [Passenger]
+      operationId: deletePassengerProfile
+      x-status: implemented
+      x-required-role: PASSENGER
+      summary: Delete the passenger profile
+      description: "**Auth:** Bearer JWT · **Role:** PASSENGER. Deletes the profile and its saved places. The user account itself is kept."
+      responses:
+        "200":
+          description: Profile deleted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+              example: { success: true, message: Passenger profile deleted successfully. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/passengers/saved-places:
+    post:
+      tags: [Passenger]
+      operationId: addSavedPlace
+      x-status: implemented
+      x-required-role: PASSENGER
+      summary: Add a saved place
+      description: |
+        **Auth:** Bearer JWT · **Role:** PASSENGER.
+
+        At most one `HOME` and one `WORK` place, and 20 places in total. `label` defaults to
+        "Home" / "Work" / "Other". Coordinates are stored as given (no geocoding).
+        Returns the full updated profile; the new place's `id` is used as `{placeId}`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SavedPlaceInput" }
+            example: { type: HOME, label: Home, address: "12 MG Road, Patna, Bihar", latitude: 25.6093, longitude: 85.1376 }
+      responses:
+        "201":
+          description: Place added.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PassengerProfileResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: A HOME/WORK place already exists.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example: { success: false, message: You already have a HOME place. Update it instead. }
+
+  /api/passengers/saved-places/{placeId}:
+    parameters:
+      - $ref: "#/components/parameters/PlaceId"
+    patch:
+      tags: [Passenger]
+      operationId: updateSavedPlace
+      x-status: implemented
+      x-required-role: PASSENGER
+      summary: Update a saved place
+      description: "**Auth:** Bearer JWT · **Role:** PASSENGER. Partial update of one of the caller's places; at least one field is required."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SavedPlaceUpdate" }
+            example: { label: My flat }
+      responses:
+        "200":
+          description: Place updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PassengerProfileResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      tags: [Passenger]
+      operationId: deleteSavedPlace
+      x-status: implemented
+      x-required-role: PASSENGER
+      summary: Delete a saved place
+      description: "**Auth:** Bearer JWT · **Role:** PASSENGER. Removes one of the caller's places and returns the updated profile."
+      responses:
+        "200":
+          description: Place deleted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PassengerProfileResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ===========================================================================
+  # DRIVER (implemented)
+  # ===========================================================================
+  /api/drivers/profile:
+    post:
+      tags: [Driver]
+      operationId: createDriverProfile
+      x-status: implemented
+      x-required-role: DRIVER
+      summary: Create the driver profile
+      description: |
+        **Auth:** Bearer JWT · **Role:** DRIVER.
+
+        Creates the caller's profile (one per driver) with `verificationStatus: PENDING` and
+        `availabilityStatus: OFFLINE`. Status fields in the body are ignored. Drivers must be 18+
+        if `dateOfBirth` is given. `licenseNumber` must be unique across drivers.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DriverProfileCreate" }
+            example: { phone: "9123456789", licenseNumber: BR0120230001234, dateOfBirth: "1995-08-20", gender: MALE }
+      responses:
+        "201":
+          description: Profile created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverProfileResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: Profile already exists, licence number taken, or phone number taken.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                exists: { value: { success: false, message: Driver profile already exists. Use PATCH to update it. } }
+                license: { value: { success: false, message: This license number is already registered to another driver. } }
+    get:
+      tags: [Driver]
+      operationId: getDriverProfile
+      x-status: implemented
+      x-required-role: DRIVER
+      summary: Get the driver profile
+      description: "**Auth:** Bearer JWT · **Role:** DRIVER. Returns the caller's profile, verification status and contact details."
+      responses:
+        "200":
+          description: Profile.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverProfileResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Driver]
+      operationId: updateDriverProfile
+      x-status: implemented
+      x-required-role: DRIVER
+      summary: Update the driver profile
+      description: |
+        **Auth:** Bearer JWT · **Role:** DRIVER.
+
+        Partial update; at least one field. Changing `licenseNumber` on a VERIFIED or REJECTED
+        driver resets `verificationStatus` to **PENDING** (needs admin review again).
+        `verificationStatus`, `verifiedAt`, `rejectionReason` and `availabilityStatus` cannot be set here.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DriverProfileUpdate" }
+            example: { profileImage: "https://example.com/driver.jpg" }
+      responses:
+        "200":
+          description: Profile updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverProfileResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/drivers/vehicle:
+    post:
+      tags: [Driver]
+      operationId: addVehicle
+      x-status: implemented
+      x-required-role: DRIVER
+      summary: Add the driver's vehicle
+      description: |
+        **Auth:** Bearer JWT · **Role:** DRIVER.
+
+        One vehicle per driver (MVP). `registrationNumber` is normalised (`br 01 ab-1234` → `BR01AB1234`)
+        and must be unique. Adding a vehicle resets a VERIFIED/REJECTED driver to PENDING.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VehicleInput" }
+            example: { vehicleType: BIKE, make: Honda, model: Shine, year: 2024, color: Black, registrationNumber: BR01AB1234 }
+      responses:
+        "201":
+          description: Vehicle added.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VehicleResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Driver already has a vehicle, or registration number taken.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                exists: { value: { success: false, message: You already have a vehicle. Use PATCH to update it. } }
+                registration: { value: { success: false, message: A vehicle with this registration number is already registered. } }
+    get:
+      tags: [Driver]
+      operationId: getVehicle
+      x-status: implemented
+      x-required-role: DRIVER
+      summary: Get the driver's vehicle
+      description: "**Auth:** Bearer JWT · **Role:** DRIVER."
+      responses:
+        "200":
+          description: Vehicle.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VehicleResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Driver]
+      operationId: updateVehicle
+      x-status: implemented
+      x-required-role: DRIVER
+      summary: Update the driver's vehicle
+      description: "**Auth:** Bearer JWT · **Role:** DRIVER. Partial update; resets a VERIFIED/REJECTED driver to PENDING."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VehicleUpdate" }
+            example: { color: Red }
+      responses:
+        "200":
+          description: Vehicle updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VehicleResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      tags: [Driver]
+      operationId: deleteVehicle
+      x-status: implemented
+      x-required-role: DRIVER
+      summary: Delete the driver's vehicle
+      description: "**Auth:** Bearer JWT · **Role:** DRIVER. Resets a VERIFIED/REJECTED driver to PENDING."
+      responses:
+        "200":
+          description: Vehicle deleted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+              example: { success: true, message: Vehicle deleted successfully. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ===========================================================================
+  # DRIVER DOCUMENTS (implemented)
+  # ===========================================================================
+  /api/drivers/documents:
+    post:
+      tags: [Driver Documents]
+      operationId: submitDocument
+      x-status: implemented
+      x-required-role: DRIVER
+      summary: Submit a verification document
+      description: |
+        **Auth:** Bearer JWT · **Role:** DRIVER.
+
+        Two documents are required: `AADHAAR` and `DRIVING_LICENSE` (one of each). `documentUrl`
+        points to where the file is stored; files are not uploaded to this API. New documents start as
+        PENDING; status fields in the body are ignored.
+
+        Numbers are normalised (spaces/dashes removed, upper-cased) and checked per type:
+        Aadhaar = 12 digits not starting with 0 or 1; driving licence = 8-20 letters/digits.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DriverDocumentInput" }
+            examples:
+              aadhaar:
+                summary: Aadhaar card
+                value: { documentType: AADHAAR, documentNumber: "2341 2341 2341", documentUrl: "https://files.example.com/aadhaar.jpg" }
+              drivingLicense:
+                summary: Driving licence
+                value: { documentType: DRIVING_LICENSE, documentNumber: BR0120230001234, documentUrl: "https://files.example.com/driving-license.jpg" }
+      responses:
+        "201":
+          description: Document submitted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverDocumentResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: A document of this type was already submitted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example: { success: false, message: You already submitted this document type. Use PATCH to replace it. }
+    get:
+      tags: [Driver Documents]
+      operationId: listDocuments
+      x-status: implemented
+      x-required-role: DRIVER
+      summary: List the driver's documents
+      description: "**Auth:** Bearer JWT · **Role:** DRIVER. The caller's AADHAAR and DRIVING_LICENSE documents, sorted by `documentType`."
+      responses:
+        "200":
+          description: Documents.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverDocumentListResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/drivers/documents/{documentId}:
+    parameters:
+      - $ref: "#/components/parameters/DocumentId"
+    patch:
+      tags: [Driver Documents]
+      operationId: updateDocument
+      x-status: implemented
+      x-required-role: DRIVER
+      summary: Re-submit a document
+      description: |
+        **Auth:** Bearer JWT · **Role:** DRIVER.
+
+        Replaces the number and/or file of one of the caller's documents (the type can't change).
+        A new number must match the document's type (Aadhaar = 12 digits). The document goes back
+        to PENDING and so does the driver. Another driver's document returns **404**.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DriverDocumentUpdate" }
+            example: { documentUrl: "https://files.example.com/driving-license-clear.jpg" }
+      responses:
+        "200":
+          description: Document re-submitted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverDocumentResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ===========================================================================
+  # DRIVER LOCATION & AVAILABILITY (implemented)
+  # ===========================================================================
+  /api/drivers/availability:
+    patch:
+      tags: [Driver Location]
+      operationId: updateAvailability
+      x-status: implemented
+      x-required-role: DRIVER
+      summary: Go online (AVAILABLE) or offline
+      description: |
+        **Auth:** Bearer JWT · **Role:** DRIVER.
+
+        `AVAILABLE` requires: verified email, a driver profile with `verificationStatus: VERIFIED`,
+        a vehicle, and a location sent within `LOCATION_STALE_AFTER_SECONDS` (default 60 s).
+        Send `PATCH /api/drivers/location` first. Repeating the current status is allowed.
+
+        `OFFLINE` also deletes the stored location. `BUSY` cannot be set by the driver, and a BUSY
+        driver cannot change status (managed by the ride flow).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AvailabilityRequest" }
+            examples:
+              online: { value: { status: AVAILABLE } }
+              offline: { value: { status: OFFLINE } }
+      responses:
+        "200":
+          description: Status changed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverLocationResponse" }
+              example:
+                success: true
+                message: You are now online.
+                data: { availabilityStatus: AVAILABLE, latitude: 25.5941, longitude: 85.1376, lastLocationUpdatedAt: "2026-10-06T09:30:00.000Z", isLocationStale: false }
+        "400":
+          description: Validation failed, no vehicle, or location missing/stale.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                noVehicle: { value: { success: false, message: Add a vehicle before going online. } }
+                noLocation: { value: { success: false, message: Share your current location before going online. } }
+                stale: { value: { success: false, message: Your location is out of date. Send a fresh location update before going online. } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: Wrong role, email not verified, or driver not VERIFIED.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example: { success: false, message: Your driver account is PENDING. Only verified drivers can go online. }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Driver is BUSY, or the status changed concurrently.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example: { success: false, message: You are on a ride. Availability will update when the ride ends. }
+
+  /api/drivers/location:
+    patch:
+      tags: [Driver Location]
+      operationId: updateLocation
+      x-status: implemented
+      x-required-role: DRIVER
+      summary: Update current location
+      description: |
+        **Auth:** Bearer JWT · **Role:** DRIVER (VERIFIED only) · **Rate limit:** 120 / minute per driver.
+
+        Stores the current position as GeoJSON `[longitude, latitude]` with `lastLocationUpdatedAt`.
+        Only the current position is kept (no history). Ids in the body are ignored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DriverLocationInput" }
+            example: { latitude: 25.5941, longitude: 85.1376 }
+      responses:
+        "200":
+          description: Location stored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverLocationResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: Wrong role, or driver not VERIFIED.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example: { success: false, message: Only verified drivers can share their location. }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+    get:
+      tags: [Driver Location]
+      operationId: getLocation
+      x-status: implemented
+      x-required-role: DRIVER
+      summary: Get own current location
+      description: |
+        **Auth:** Bearer JWT · **Role:** DRIVER. The caller's own location only; no endpoint returns
+        other drivers' locations. `isLocationStale` is true when the last update is older than
+        `LOCATION_STALE_AFTER_SECONDS`.
+      responses:
+        "200":
+          description: Current location.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverLocationResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No driver profile, or no location shared yet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example: { success: false, message: No location shared yet. Send PATCH /api/drivers/location first. }
+
+  # ===========================================================================
+  # RIDES (implemented, except history / start / complete)
+  # ===========================================================================
+  /api/rides/estimate:
+    post:
+      tags: [Rides]
+      operationId: estimateRide
+      x-status: implemented
+      x-required-role: PASSENGER
+      summary: Estimate distance, duration and fare
+      description: |
+        **Auth:** Bearer JWT · **Role:** PASSENGER · **Rate limit:** 30 / minute per user.
+
+        Calculates the road route (OSRM) and the fare for the chosen vehicle type. Use it to show the
+        ride summary before booking. If the routing provider is unavailable, a straight-line estimate
+        is returned with `routeSource: ESTIMATED`. `routeGeometry` is an encoded polyline for drawing
+        the route on a map (null when estimated). Nothing is stored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RideRequest" }
+            example:
+              pickup: { address: "Boring Road, Patna", latitude: 25.6127, longitude: 85.1589 }
+              destination: { address: "Patna Junction", latitude: 25.5941, longitude: 85.1376 }
+              vehicleType: BIKE
+      responses:
+        "200":
+          description: Estimate.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideEstimateResponse" }
+        "400":
+          description: Validation failed, pickup and destination too close, or trip too long.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                tooClose: { value: { success: false, message: "Pickup and destination are too close (less than 100 m apart)." } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422":
+          description: The routing provider found no drivable route.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example: { success: false, message: No drivable route between pickup and destination. }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /api/rides:
+    post:
+      tags: [Rides]
+      operationId: bookRide
+      x-status: implemented
+      x-required-role: PASSENGER
+      summary: Book a ride
+      description: |
+        **Auth:** Bearer JWT · **Role:** PASSENGER · **Rate limit:** 10 / minute per user.
+
+        Recalculates route and fare on the server (any distance, duration or fare sent by the client
+        is ignored), creates the ride in `SEARCHING`, and offers it to the nearest AVAILABLE,
+        VERIFIED drivers with the requested vehicle type and a fresh location. One active ride per
+        passenger. If nobody is available the ride stays `SEARCHING` and the message says so;
+        searching continues when the ride is read, and stops after the search timeout (the ride is
+        then cancelled by SYSTEM).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RideRequest" }
+            example:
+              pickup: { address: "Boring Road, Patna", latitude: 25.6127, longitude: 85.1589 }
+              destination: { address: "Patna Junction", latitude: 25.5941, longitude: 85.1376 }
+              vehicleType: BIKE
+      responses:
+        "201":
+          description: Ride created and offered to nearby drivers (or no drivers available yet).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookRideResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: The passenger already has an active ride.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example: { success: false, message: You already have an active ride. }
+        "422":
+          description: No drivable route.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /api/rides/current:
+    get:
+      tags: [Rides]
+      operationId: getCurrentRide
+      x-status: implemented
+      x-required-role: PASSENGER, DRIVER
+      summary: Get my active ride
+      description: |
+        **Auth:** Bearer JWT · **Role:** PASSENGER or DRIVER.
+
+        Passenger: their ride that is not completed or cancelled (use after a refresh or reconnect).
+        Driver: the ride currently assigned to them.
+      responses:
+        "200":
+          description: Active ride.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No active ride.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example: { success: false, message: You have no active ride. }
+
+  /api/rides/history:
+    get:
+      tags: [Rides]
+      operationId: getRideHistory
+      x-status: planned
+      x-required-role: PASSENGER, DRIVER
+      summary: "[PLANNED] My ride history"
+      description: "**Planned.** **Auth:** Bearer JWT · **Role:** PASSENGER or DRIVER. Newest first."
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/RideStatus" }
+      responses:
+        "200":
+          description: Rides.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideListResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/rides/{rideId}:
+    parameters:
+      - $ref: "#/components/parameters/RideId"
+    get:
+      tags: [Rides]
+      operationId: getRide
+      x-status: implemented
+      x-required-role: PASSENGER, DRIVER, ADMIN
+      summary: Get a ride
+      description: |
+        **Auth:** Bearer JWT · **Role:** the ride's passenger, a driver it is offered or assigned to,
+        or ADMIN. Anyone else gets **404**.
+
+        Includes the assigned driver's public details (name, photo, vehicle, plate). Never includes
+        phone numbers, licence numbers or live location. Drivers and admins also see the passenger's
+        name; admins also see matching details.
+      responses:
+        "200":
+          description: Ride.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/rides/{rideId}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/RideId"
+    patch:
+      tags: [Rides]
+      operationId: cancelRide
+      x-status: implemented
+      x-required-role: PASSENGER
+      summary: Cancel my ride
+      description: |
+        **Auth:** Bearer JWT · **Role:** the ride's PASSENGER.
+
+        Allowed while `SEARCHING` and after a driver is assigned, until the ride starts. An assigned
+        driver goes back to AVAILABLE in the same transaction. No cancellation fee yet.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CancelRideRequest" }
+            example: { reason: Changed my plans }
+      responses:
+        "200":
+          description: Ride cancelled.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Already cancelled, completed or started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example: { success: false, message: This ride is already cancelled. }
+
+  /api/drivers/rides/requests:
+    get:
+      tags: [Rides]
+      operationId: listRideRequests
+      x-status: implemented
+      x-required-role: DRIVER
+      summary: Ride requests offered to me
+      description: |
+        **Auth:** Bearer JWT · **Role:** DRIVER.
+
+        Open ride offers for the caller (empty unless AVAILABLE), oldest first, each with the distance
+        from the driver to the pickup. Socket.IO will push the same offers in real time later; this
+        endpoint remains for catching up.
+      responses:
+        "200":
+          description: Ride offers.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideOfferListResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/rides/{rideId}/accept:
+    parameters:
+      - $ref: "#/components/parameters/RideId"
+    post:
+      tags: [Rides]
+      operationId: acceptRide
+      x-status: implemented
+      x-required-role: DRIVER
+      summary: Accept a ride offer
+      description: |
+        **Auth:** Bearer JWT · **Role:** DRIVER the ride was offered to (AVAILABLE, VERIFIED, matching
+        vehicle type).
+
+        In one transaction: the driver goes AVAILABLE → BUSY and the ride goes SEARCHING →
+        DRIVER_ASSIGNED with `assignedAt`. Each step only succeeds if the state is still as expected,
+        so if several drivers accept at once exactly one wins; the others get **409**.
+      responses:
+        "200":
+          description: Ride accepted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: Wrong role, driver not verified, or vehicle type mismatch.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example: { success: false, message: "This ride needs a BIKE; your vehicle doesn't match." }
+        "404":
+          description: Ride doesn't exist or wasn't offered to this driver.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example: { success: false, message: Ride request not found. }
+        "409":
+          description: Ride already taken, cancelled or expired; or driver not AVAILABLE.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              examples:
+                taken: { value: { success: false, message: "This ride has already been accepted by another driver." } }
+                busy: { value: { success: false, message: "You already have an active ride." } }
+
+  /api/rides/{rideId}/reject:
+    parameters:
+      - $ref: "#/components/parameters/RideId"
+    post:
+      tags: [Rides]
+      operationId: rejectRide
+      x-status: implemented
+      x-required-role: DRIVER
+      summary: Decline a ride offer
+      description: |
+        **Auth:** Bearer JWT · **Role:** DRIVER the ride was offered to.
+
+        The ride stays SEARCHING and the driver stays AVAILABLE. When every offered driver has
+        declined, the ride is offered to the next-nearest drivers.
+      responses:
+        "200":
+          description: Offer declined.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+              example: { success: true, message: Ride request declined. }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/rides/{rideId}/start:
+    parameters:
+      - $ref: "#/components/parameters/RideId"
+    post:
+      tags: [Rides]
+      operationId: startRide
+      x-status: planned
+      x-required-role: DRIVER
+      summary: "[PLANNED] Start the ride"
+      description: "**Planned.** **Auth:** Bearer JWT · **Role:** the ride's assigned DRIVER. Moves the ride to `RIDE_STARTED` after pickup."
+      responses:
+        "200":
+          description: Ride started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/rides/{rideId}/complete:
+    parameters:
+      - $ref: "#/components/parameters/RideId"
+    post:
+      tags: [Rides]
+      operationId: completeRide
+      x-status: planned
+      x-required-role: DRIVER
+      summary: "[PLANNED] Complete the ride"
+      description: "**Planned.** **Auth:** Bearer JWT · **Role:** the ride's assigned DRIVER. Moves the ride to `RIDE_COMPLETED` and sets the final fare."
+      responses:
+        "200":
+          description: Ride completed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  # ===========================================================================
+  # RIDE MATCHING (planned)
+  # ===========================================================================
+  /api/rides/{rideId}/match:
+    parameters:
+      - $ref: "#/components/parameters/RideId"
+    post:
+      tags: [Ride Matching]
+      operationId: matchRide
+      x-status: planned
+      x-required-role: PASSENGER
+      summary: "[PLANNED] (Re)start driver matching"
+      description: |
+        **Planned.** **Auth:** Bearer JWT · **Role:** the ride's PASSENGER.
+
+        Searches for nearby AVAILABLE, VERIFIED drivers of the requested vehicle type and offers
+        them the ride, e.g. to retry after `NO_DRIVERS_AVAILABLE`. The matching algorithm
+        (radius, ranking, offer timeout) is not decided yet.
+      responses:
+        "202":
+          description: Matching started; the result arrives via ride status / Socket.IO.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/rides/{rideId}/driver:
+    parameters:
+      - $ref: "#/components/parameters/RideId"
+    get:
+      tags: [Ride Matching]
+      operationId: getAssignedDriver
+      x-status: planned
+      x-required-role: PASSENGER
+      summary: "[PLANNED] Get the assigned driver"
+      description: |
+        **Planned.** **Auth:** Bearer JWT · **Role:** the ride's PASSENGER.
+
+        Public driver details for the passenger: name, photo, vehicle, and location while the
+        driver is on the way. Never exposes documents or licence numbers.
+      responses:
+        "200":
+          description: Assigned driver.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssignedDriverResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ===========================================================================
+  # PAYMENTS (planned)
+  # ===========================================================================
+  /api/payments/history:
+    get:
+      tags: [Payments]
+      operationId: getPaymentHistory
+      x-status: planned
+      x-required-role: PASSENGER, DRIVER
+      summary: "[PLANNED] My payment history"
+      description: "**Planned.** **Auth:** Bearer JWT · **Role:** PASSENGER (payments made) or DRIVER (payments received)."
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Payments.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentListResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/rides/{rideId}/payment:
+    parameters:
+      - $ref: "#/components/parameters/RideId"
+    post:
+      tags: [Payments]
+      operationId: payForRide
+      x-status: planned
+      x-required-role: PASSENGER
+      summary: "[PLANNED] Pay for a completed ride"
+      description: |
+        **Planned.** **Auth:** Bearer JWT · **Role:** the ride's PASSENGER.
+
+        Creates the payment for a `COMPLETED` ride. The payment gateway is not chosen yet; for
+        online methods the response is expected to include gateway data for the client.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [method]
+              properties:
+                method: { $ref: "#/components/schemas/PaymentMethod" }
+            example: { method: UPI }
+      responses:
+        "201":
+          description: Payment created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/payments/{paymentId}:
+    parameters:
+      - $ref: "#/components/parameters/PaymentId"
+    get:
+      tags: [Payments]
+      operationId: getPayment
+      x-status: planned
+      x-required-role: PASSENGER, DRIVER, ADMIN
+      summary: "[PLANNED] Get a payment"
+      description: "**Planned.** **Auth:** Bearer JWT · **Role:** the payment's passenger or driver, or ADMIN."
+      responses:
+        "200":
+          description: Payment.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ===========================================================================
+  # RATINGS & REVIEWS (planned)
+  # ===========================================================================
+  /api/rides/{rideId}/rating:
+    parameters:
+      - $ref: "#/components/parameters/RideId"
+    post:
+      tags: [Ratings & Reviews]
+      operationId: rateRide
+      x-status: planned
+      x-required-role: PASSENGER, DRIVER
+      summary: "[PLANNED] Rate a completed ride"
+      description: |
+        **Planned.** **Auth:** Bearer JWT · **Role:** the ride's PASSENGER (rates the driver) or DRIVER (rates the passenger).
+
+        One rating per participant per ride, only after `COMPLETED`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RatingInput" }
+            example: { score: 5, comment: Smooth ride and polite driver. }
+      responses:
+        "201":
+          description: Rating saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RatingResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    get:
+      tags: [Ratings & Reviews]
+      operationId: getRideRating
+      x-status: planned
+      x-required-role: PASSENGER, DRIVER, ADMIN
+      summary: "[PLANNED] Get ratings for a ride"
+      description: "**Planned.** **Auth:** Bearer JWT · **Role:** the ride's passenger or driver, or ADMIN."
+      responses:
+        "200":
+          description: Ratings given for this ride.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Ratings fetched successfully. }
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Rating" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ===========================================================================
+  # NOTIFICATIONS (planned)
+  # ===========================================================================
+  /api/notifications:
+    get:
+      tags: [Notifications]
+      operationId: listNotifications
+      x-status: planned
+      x-required-role: any
+      summary: "[PLANNED] List my notifications"
+      description: "**Planned.** **Auth:** Bearer JWT · **Role:** any. Newest first."
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - name: unreadOnly
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Notifications.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationListResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/notifications/read-all:
+    patch:
+      tags: [Notifications]
+      operationId: markAllNotificationsRead
+      x-status: planned
+      x-required-role: any
+      summary: "[PLANNED] Mark all notifications as read"
+      description: "**Planned.** **Auth:** Bearer JWT · **Role:** any."
+      responses:
+        "200":
+          description: All marked as read.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+              example: { success: true, message: All notifications marked as read. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/notifications/{notificationId}/read:
+    parameters:
+      - $ref: "#/components/parameters/NotificationId"
+    patch:
+      tags: [Notifications]
+      operationId: markNotificationRead
+      x-status: planned
+      x-required-role: any
+      summary: "[PLANNED] Mark a notification as read"
+      description: "**Planned.** **Auth:** Bearer JWT · **Role:** the notification's owner."
+      responses:
+        "200":
+          description: Marked as read.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ===========================================================================
+  # ADMIN: driver verification (implemented)
+  # ===========================================================================
+  /api/admin/drivers/pending-verification:
+    get:
+      tags: [Admin]
+      operationId: listPendingDrivers
+      x-status: implemented
+      x-required-role: ADMIN
+      summary: List drivers waiting for verification
+      description: |
+        **Auth:** Bearer JWT · **Role:** ADMIN.
+
+        PENDING drivers, oldest first, with contact details, vehicle, documents and a `missing`
+        list (`VEHICLE` and/or document types not yet submitted). Only drivers with an empty
+        `missing` list can be verified.
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Pending drivers.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PendingDriversResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/drivers/nearby:
+    get:
+      tags: [Admin]
+      operationId: adminNearbyDrivers
+      x-status: implemented
+      x-required-role: ADMIN
+      summary: Nearby available drivers (operations view)
+      description: |
+        **Auth:** Bearer JWT · **Role:** ADMIN.
+
+        Runs the internal nearby-driver search used by the ride flow: AVAILABLE + VERIFIED drivers
+        with a vehicle and a location updated within `LOCATION_STALE_AFTER_SECONDS`, nearest first.
+        Not available to passengers or drivers.
+      parameters:
+        - { name: latitude, in: query, required: true, schema: { type: number, minimum: -90, maximum: 90, example: 25.5941 } }
+        - { name: longitude, in: query, required: true, schema: { type: number, minimum: -180, maximum: 180, example: 85.1376 } }
+        - { name: radiusMeters, in: query, description: "Default NEARBY_SEARCH_RADIUS_METERS (5000).", schema: { type: integer, minimum: 100, maximum: 50000 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - { name: vehicleType, in: query, schema: { $ref: "#/components/schemas/VehicleType" } }
+      responses:
+        "200":
+          description: Drivers sorted by distance.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Nearby available drivers fetched successfully. }
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/NearbyDriver" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/drivers/{driverId}/verify:
+    parameters:
+      - $ref: "#/components/parameters/DriverId"
+    patch:
+      tags: [Admin]
+      operationId: verifyDriver
+      x-status: implemented
+      x-required-role: ADMIN
+      summary: Approve a driver
+      description: |
+        **Auth:** Bearer JWT · **Role:** ADMIN.
+
+        Only a PENDING driver with a vehicle and both documents (AADHAAR and DRIVING_LICENSE) can be verified.
+        Sets `verificationStatus: VERIFIED`, `verifiedAt`, `reviewedBy`, and marks all documents VERIFIED.
+      responses:
+        "200":
+          description: Driver verified.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminDriverProfileResponse" }
+        "400":
+          description: Invalid id, or submission incomplete.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example: { success: false, message: "Driver can't be verified yet. Missing: VEHICLE, AADHAAR." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Driver is not PENDING (already verified/rejected) or was changed concurrently.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example: { success: false, message: Driver is already VERIFIED. }
+
+  /api/admin/drivers/{driverId}/reject:
+    parameters:
+      - $ref: "#/components/parameters/DriverId"
+    patch:
+      tags: [Admin]
+      operationId: rejectDriver
+      x-status: implemented
+      x-required-role: ADMIN
+      summary: Reject a driver
+      description: |
+        **Auth:** Bearer JWT · **Role:** ADMIN.
+
+        Sets `verificationStatus: REJECTED` with a reason. Optionally marks specific documents
+        REJECTED (`documentTypes`) so the driver knows what to re-submit. Re-submitting a document
+        moves the driver back to PENDING.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RejectDriverRequest" }
+            example: { rejectionReason: Driving license image is unclear., documentTypes: [DRIVING_LICENSE] }
+      responses:
+        "200":
+          description: Driver rejected.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminDriverProfileResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  # ===========================================================================
+  # ADMIN: management & analytics (planned)
+  # ===========================================================================
+  /api/admin/users:
+    get:
+      tags: [Admin]
+      operationId: adminListUsers
+      x-status: planned
+      x-required-role: ADMIN
+      summary: "[PLANNED] List users"
+      description: "**Planned.** **Auth:** Bearer JWT · **Role:** ADMIN."
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - name: role
+          in: query
+          schema: { $ref: "#/components/schemas/Role" }
+        - name: search
+          in: query
+          description: Matches name, email or phone.
+          schema: { type: string }
+      responses:
+        "200":
+          description: Users.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Users fetched successfully. }
+                  data:
+                    type: object
+                    properties:
+                      users: { type: array, items: { $ref: "#/components/schemas/User" } }
+                      pagination: { $ref: "#/components/schemas/Pagination" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/drivers:
+    get:
+      tags: [Admin]
+      operationId: adminListDrivers
+      x-status: planned
+      x-required-role: ADMIN
+      summary: "[PLANNED] List drivers"
+      description: "**Planned.** **Auth:** Bearer JWT · **Role:** ADMIN. All drivers with optional filters."
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - name: verificationStatus
+          in: query
+          schema: { $ref: "#/components/schemas/VerificationStatus" }
+        - name: availabilityStatus
+          in: query
+          schema: { $ref: "#/components/schemas/DriverAvailability" }
+      responses:
+        "200":
+          description: Drivers.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PendingDriversResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/drivers/{driverId}:
+    parameters:
+      - $ref: "#/components/parameters/DriverId"
+    get:
+      tags: [Admin]
+      operationId: adminGetDriver
+      x-status: planned
+      x-required-role: ADMIN
+      summary: "[PLANNED] Get a driver's full details"
+      description: "**Planned.** **Auth:** Bearer JWT · **Role:** ADMIN. Profile, contact details, vehicle and documents."
+      responses:
+        "200":
+          description: Driver.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Driver fetched successfully. }
+                  data: { $ref: "#/components/schemas/PendingDriver" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/admin/drivers/{driverId}/suspend:
+    parameters:
+      - $ref: "#/components/parameters/DriverId"
+    patch:
+      tags: [Admin]
+      operationId: suspendDriver
+      x-status: planned
+      x-required-role: ADMIN
+      summary: "[PLANNED] Suspend a driver"
+      description: "**Planned.** **Auth:** Bearer JWT · **Role:** ADMIN. Blocks the driver from going online. How suspension is stored is not decided yet."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 500 }
+            example: { reason: Multiple passenger safety complaints. }
+      responses:
+        "200":
+          description: Driver suspended.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminDriverProfileResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/admin/drivers/{driverId}/activate:
+    parameters:
+      - $ref: "#/components/parameters/DriverId"
+    patch:
+      tags: [Admin]
+      operationId: activateDriver
+      x-status: planned
+      x-required-role: ADMIN
+      summary: "[PLANNED] Re-activate a suspended driver"
+      description: "**Planned.** **Auth:** Bearer JWT · **Role:** ADMIN."
+      responses:
+        "200":
+          description: Driver activated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminDriverProfileResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/admin/rides:
+    get:
+      tags: [Admin]
+      operationId: adminListRides
+      x-status: planned
+      x-required-role: ADMIN
+      summary: "[PLANNED] List all rides"
+      description: "**Planned.** **Auth:** Bearer JWT · **Role:** ADMIN."
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/RideStatus" }
+      responses:
+        "200":
+          description: Rides.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideListResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/rides/active:
+    get:
+      tags: [Admin]
+      operationId: adminListActiveRides
+      x-status: planned
+      x-required-role: ADMIN
+      summary: "[PLANNED] List rides in progress"
+      description: "**Planned.** **Auth:** Bearer JWT · **Role:** ADMIN. Rides not yet completed or cancelled."
+      responses:
+        "200":
+          description: Active rides.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideListResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/payments:
+    get:
+      tags: [Admin]
+      operationId: adminListPayments
+      x-status: planned
+      x-required-role: ADMIN
+      summary: "[PLANNED] List all payments"
+      description: "**Planned.** **Auth:** Bearer JWT · **Role:** ADMIN."
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/PaymentStatus" }
+      responses:
+        "200":
+          description: Payments.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentListResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/analytics:
+    get:
+      tags: [Admin]
+      operationId: adminAnalytics
+      x-status: planned
+      x-required-role: ADMIN
+      summary: "[PLANNED] Platform analytics"
+      description: "**Planned.** **Auth:** Bearer JWT · **Role:** ADMIN. Aggregate counts and revenue for a date range. Exact metrics are not decided yet."
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string, format: date, example: "2026-10-01" }
+        - name: to
+          in: query
+          schema: { type: string, format: date, example: "2026-10-31" }
+      responses:
+        "200":
+          description: Analytics.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Analytics fetched successfully. }
+                  data:
+                    type: object
+                    description: Shape to be defined when the module is built.
+                    additionalProperties: true
+                    example: { totalRides: 1240, completedRides: 1102, activeDrivers: 86, revenue: { amount: 184520, currency: INR } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/audit-logs:
+    get:
+      tags: [Admin]
+      operationId: adminAuditLogs
+      x-status: planned
+      x-required-role: ADMIN
+      summary: "[PLANNED] Admin audit log"
+      description: "**Planned.** **Auth:** Bearer JWT · **Role:** ADMIN. Record of admin actions (verifications, rejections, suspensions)."
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Audit log entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Audit logs fetched successfully. }
+                  data:
+                    type: object
+                    properties:
+                      logs:
+                        type: array
+                        items: { $ref: "#/components/schemas/AuditLog" }
+                      pagination: { $ref: "#/components/schemas/Pagination" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ===========================================================================
+  # HEALTH (implemented)
+  # ===========================================================================
+  /api/health:
+    get:
+      tags: [Health]
+      operationId: health
+      x-status: implemented
+      x-required-role: none
+      summary: Health check
+      description: "**Auth:** none. 200 when the database answers, 503 otherwise. Used by the Docker healthcheck. Not wrapped in the standard envelope."
+      security: []
+      responses:
+        "200":
+          description: Healthy.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthReport" }
+        "503":
+          description: Database unreachable.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthReport" }
+              example: { status: degraded, timestamp: "2026-10-06T07:45:08.346Z", uptime: 12, services: { database: down } }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "JWT from `POST /api/auth/login`. Payload: `sub` = user id, `role` = PASSENGER | DRIVER | ADMIN."
+
+  parameters:
+    PlaceId:
+      name: placeId
+      in: path
+      required: true
+      description: Saved place id (from `savedPlaces[].id`).
+      schema: { $ref: "#/components/schemas/ObjectId" }
+    DocumentId:
+      name: documentId
+      in: path
+      required: true
+      description: Document id (from `GET /api/drivers/documents`).
+      schema: { $ref: "#/components/schemas/ObjectId" }
+    DriverId:
+      name: driverId
+      in: path
+      required: true
+      description: Driver **profile** id (`DriverProfile.id`), not the user id.
+      schema: { $ref: "#/components/schemas/ObjectId" }
+    RideId:
+      name: rideId
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/ObjectId" }
+    PaymentId:
+      name: paymentId
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/ObjectId" }
+    NotificationId:
+      name: notificationId
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/ObjectId" }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    ValidationError:
+      description: Request body, query or path parameter failed validation.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ValidationErrorResponse" }
+    Unauthorized:
+      description: Missing, invalid or expired JWT.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          examples:
+            missing: { value: { success: false, message: Authentication required. } }
+            invalid: { value: { success: false, message: Invalid or expired token. } }
+    Forbidden:
+      description: Authenticated, but the role is not allowed to use this endpoint.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          example: { success: false, message: You do not have permission to perform this action. }
+    NotFound:
+      description: The resource doesn't exist, or doesn't belong to the caller.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          example: { success: false, message: Driver profile not found. Create one first. }
+    Conflict:
+      description: Conflicts with existing data (duplicate value or invalid state).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          example: { success: false, message: A record with these details already exists. }
+    TooManyRequests:
+      description: Rate limit exceeded. See the `RateLimit` / `RateLimit-Policy` response headers.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          example: { success: false, message: Too many requests. Please try again later. }
+
+  schemas:
+    # ---------------------------------------------------------------- common
+    ObjectId:
+      type: string
+      pattern: "^[a-f0-9]{24}$"
+      example: 6ac49c10dc4a882c54446f3f
+    Phone:
+      type: string
+      description: E.164. A 10-digit Indian mobile is accepted on input and stored with +91.
+      example: "+919876543210"
+    Timestamps:
+      type: object
+      properties:
+        createdAt: { type: string, format: date-time, example: "2026-10-06T07:45:08.346Z" }
+        updatedAt: { type: string, format: date-time, example: "2026-10-06T07:45:08.346Z" }
+    MessageResponse:
+      type: object
+      required: [success, message]
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Operation completed successfully. }
+    ErrorResponse:
+      type: object
+      required: [success, message]
+      properties:
+        success: { type: boolean, example: false }
+        message: { type: string, example: Driver profile not found. }
+        stack:
+          type: string
+          description: Only for 5xx errors in development; never in production.
+    ValidationErrorResponse:
+      type: object
+      required: [success, message, errors]
+      properties:
+        success: { type: boolean, example: false }
+        message: { type: string, example: Validation failed. }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string, example: phone }
+              message: { type: string, example: "Enter a valid phone number, e.g. 9876543210 or +919876543210" }
+    Pagination:
+      type: object
+      properties:
+        page: { type: integer, example: 1 }
+        limit: { type: integer, example: 20 }
+        total: { type: integer, example: 42 }
+        pages: { type: integer, example: 3 }
+    Money:
+      type: object
+      x-status: planned
+      properties:
+        amount: { type: number, example: 89 }
+        currency: { type: string, example: INR }
+    # ---------------------------------------------------------------- enums
+    Role:
+      type: string
+      enum: [PASSENGER, DRIVER, ADMIN]
+    Gender:
+      type: string
+      enum: [MALE, FEMALE, OTHER, PREFER_NOT_TO_SAY]
+    VerificationStatus:
+      type: string
+      enum: [PENDING, VERIFIED, REJECTED]
+    VehicleType:
+      type: string
+      enum: [BIKE, AUTO, CAB]
+    DriverAvailability:
+      type: string
+      enum: [OFFLINE, AVAILABLE, BUSY]
+      description: "Stored on DriverProfile (default OFFLINE). Drivers set AVAILABLE/OFFLINE; BUSY is set by the ride flow."
+    DocumentType:
+      type: string
+      description: Documents a driver must submit. AADHAAR number = 12 digits (not starting with 0 or 1); DRIVING_LICENSE number = 8-20 letters/digits.
+      enum: [AADHAAR, DRIVING_LICENSE]
+    SavedPlaceType:
+      type: string
+      enum: [HOME, WORK, OTHER]
+    RideStatus:
+      type: string
+      description: |
+        SEARCHING → DRIVER_ASSIGNED → DRIVER_ARRIVING → DRIVER_ARRIVED → RIDE_STARTED → RIDE_COMPLETED;
+        CANCELLED from any state before RIDE_STARTED. Only defined transitions are allowed.
+        Currently used: SEARCHING, DRIVER_ASSIGNED, CANCELLED.
+      enum: [SEARCHING, DRIVER_ASSIGNED, DRIVER_ARRIVING, DRIVER_ARRIVED, RIDE_STARTED, RIDE_COMPLETED, CANCELLED]
+    PaymentMethod:
+      type: string
+      x-status: planned
+      enum: [CASH, UPI, CARD]
+    PaymentStatus:
+      type: string
+      x-status: planned
+      enum: [PENDING, COMPLETED, FAILED, REFUNDED]
+
+    # ------------------------------------------------------------ auth (implemented)
+    User:
+      type: object
+      properties:
+        id: { $ref: "#/components/schemas/ObjectId" }
+        name: { type: string, example: Saumya Singh }
+        email: { type: string, format: email, example: saumya@example.com }
+        phone:
+          type: string
+          allOf: [{ $ref: "#/components/schemas/Phone" }]
+          nullable: true
+        role: { $ref: "#/components/schemas/Role" }
+        isEmailVerified: { type: boolean, example: true }
+    RegisterRequest:
+      type: object
+      required: [name, email, phone, password, role]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 50, example: Saumya Singh }
+        email: { type: string, format: email, maxLength: 254, example: saumya@example.com }
+        phone: { type: string, example: "9876543210" }
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: 8–72 bytes, at least one uppercase letter, one lowercase letter and one digit.
+          example: StrongPassword123
+        role:
+          type: string
+          enum: [PASSENGER, DRIVER]
+          description: ADMIN is rejected.
+    VerifyEmailRequest:
+      type: object
+      required: [email, otp]
+      properties:
+        email: { type: string, format: email, example: saumya@example.com }
+        otp: { type: string, pattern: "^\\d{6}$", example: "482913" }
+    EmailRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email, example: saumya@example.com }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, example: saumya@example.com }
+        password: { type: string, format: password, example: StrongPassword123 }
+    AuthResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Logged in successfully. }
+        data:
+          type: object
+          properties:
+            token: { type: string, example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiUEFTU0VOR0VSIiwic3ViIjoiNmFjNDljMTAifQ.signature }
+            user: { $ref: "#/components/schemas/User" }
+
+    # ------------------------------------------------------- passenger (implemented)
+    SavedPlace:
+      type: object
+      properties:
+        id: { $ref: "#/components/schemas/ObjectId" }
+        type: { $ref: "#/components/schemas/SavedPlaceType" }
+        label: { type: string, example: Home }
+        address: { type: string, example: "12 MG Road, Patna, Bihar" }
+        latitude: { type: number, example: 25.6093 }
+        longitude: { type: number, example: 85.1376 }
+    SavedPlaceInput:
+      type: object
+      required: [type, address, latitude, longitude]
+      properties:
+        type: { $ref: "#/components/schemas/SavedPlaceType" }
+        label: { type: string, maxLength: 50, description: Defaults to Home / Work / Other., example: Home }
+        address: { type: string, minLength: 5, maxLength: 300, example: "12 MG Road, Patna, Bihar" }
+        latitude: { type: number, minimum: -90, maximum: 90, example: 25.6093 }
+        longitude: { type: number, minimum: -180, maximum: 180, example: 85.1376 }
+    SavedPlaceUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        type: { $ref: "#/components/schemas/SavedPlaceType" }
+        label: { type: string, minLength: 1, maxLength: 50, example: My flat }
+        address: { type: string, minLength: 5, maxLength: 300 }
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+    PassengerProfileInput:
+      type: object
+      description: All fields optional. On PATCH at least one is required; `null` clears an optional field.
+      properties:
+        phone: { type: string, example: "9876543210" }
+        profileImage: { type: string, format: uri, nullable: true, example: "https://example.com/profile.jpg" }
+        dateOfBirth: { type: string, format: date, nullable: true, example: "2003-04-15" }
+        gender:
+          type: string
+          allOf: [{ $ref: "#/components/schemas/Gender" }]
+          nullable: true
+    PassengerProfile:
+      allOf:
+        - type: object
+          properties:
+            id: { $ref: "#/components/schemas/ObjectId" }
+            name: { type: string, example: Saumya Singh }
+            email: { type: string, format: email, example: saumya@example.com }
+            phone:
+              type: string
+              allOf: [{ $ref: "#/components/schemas/Phone" }]
+              nullable: true
+            profileImage: { type: string, format: uri, example: "https://example.com/profile.jpg" }
+            dateOfBirth: { type: string, format: date-time, example: "2003-04-15T00:00:00.000Z" }
+            gender: { $ref: "#/components/schemas/Gender" }
+            savedPlaces:
+              type: array
+              items: { $ref: "#/components/schemas/SavedPlace" }
+        - $ref: "#/components/schemas/Timestamps"
+    PassengerProfileResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Profile updated successfully. }
+        data: { $ref: "#/components/schemas/PassengerProfile" }
+
+    # ---------------------------------------------------------- driver (implemented)
+    DriverProfileCreate:
+      type: object
+      required: [licenseNumber]
+      properties:
+        phone: { type: string, example: "9123456789" }
+        profileImage: { type: string, format: uri, nullable: true }
+        dateOfBirth: { type: string, format: date, nullable: true, description: Driver must be at least 18., example: "1995-08-20" }
+        gender:
+          type: string
+          allOf: [{ $ref: "#/components/schemas/Gender" }]
+          nullable: true
+        licenseNumber: { type: string, minLength: 8, maxLength: 20, description: "Normalised (spaces/dashes removed, upper-cased).", example: BR0120230001234 }
+    DriverProfileUpdate:
+      type: object
+      minProperties: 1
+      description: At least one field. Status fields are not accepted.
+      properties:
+        phone: { type: string, example: "9123456789" }
+        profileImage: { type: string, format: uri, nullable: true, example: "https://example.com/driver.jpg" }
+        dateOfBirth: { type: string, format: date, nullable: true }
+        gender:
+          type: string
+          allOf: [{ $ref: "#/components/schemas/Gender" }]
+          nullable: true
+        licenseNumber: { type: string, minLength: 8, maxLength: 20, description: Changing it resets verification to PENDING. }
+    DriverProfile:
+      description: The driver's own view (admin audit fields hidden).
+      allOf:
+        - type: object
+          properties:
+            id: { $ref: "#/components/schemas/ObjectId" }
+            name: { type: string, example: Ravi Kumar }
+            email: { type: string, format: email, example: ravi@example.com }
+            phone:
+              type: string
+              allOf: [{ $ref: "#/components/schemas/Phone" }]
+              nullable: true
+            profileImage: { type: string, format: uri }
+            dateOfBirth: { type: string, format: date-time, example: "1995-08-20T00:00:00.000Z" }
+            gender: { $ref: "#/components/schemas/Gender" }
+            licenseNumber: { type: string, example: BR0120230001234 }
+            verificationStatus: { $ref: "#/components/schemas/VerificationStatus" }
+            verifiedAt: { type: string, format: date-time, description: Set when VERIFIED. }
+            rejectionReason: { type: string, description: Set when REJECTED., example: Driving license image is unclear. }
+            availabilityStatus: { $ref: "#/components/schemas/DriverAvailability" }
+        - $ref: "#/components/schemas/Timestamps"
+    DriverProfileResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Driver profile fetched successfully. }
+        data: { $ref: "#/components/schemas/DriverProfile" }
+    AdminDriverProfile:
+      description: The admin's view of a driver profile.
+      allOf:
+        - type: object
+          properties:
+            id: { $ref: "#/components/schemas/ObjectId" }
+            userId: { $ref: "#/components/schemas/ObjectId" }
+            profileImage: { type: string, format: uri }
+            dateOfBirth: { type: string, format: date-time }
+            gender: { $ref: "#/components/schemas/Gender" }
+            licenseNumber: { type: string, example: BR0120230001234 }
+            verificationStatus: { $ref: "#/components/schemas/VerificationStatus" }
+            verifiedAt: { type: string, format: date-time }
+            reviewedBy:
+              allOf: [{ $ref: "#/components/schemas/ObjectId" }]
+              description: Admin who verified or rejected the driver.
+            rejectionReason: { type: string }
+            availabilityStatus: { $ref: "#/components/schemas/DriverAvailability" }
+        - $ref: "#/components/schemas/Timestamps"
+    AdminDriverProfileResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Driver verified successfully. }
+        data: { $ref: "#/components/schemas/AdminDriverProfile" }
+    PendingDriver:
+      allOf:
+        - $ref: "#/components/schemas/AdminDriverProfile"
+        - type: object
+          properties:
+            user:
+              type: object
+              nullable: true
+              properties:
+                name: { type: string, example: Ravi Kumar }
+                email: { type: string, example: ravi@example.com }
+                phone:
+                  type: string
+                  allOf: [{ $ref: "#/components/schemas/Phone" }]
+                  nullable: true
+            vehicle:
+              type: object
+              allOf: [{ $ref: "#/components/schemas/Vehicle" }]
+              nullable: true
+            documents:
+              type: array
+              items: { $ref: "#/components/schemas/DriverDocument" }
+            missing:
+              type: array
+              description: Items still required before the driver can be verified.
+              items: { type: string, enum: [VEHICLE, AADHAAR, DRIVING_LICENSE] }
+              example: [AADHAAR]
+    PendingDriversResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Pending drivers fetched successfully. }
+        data:
+          type: object
+          properties:
+            drivers:
+              type: array
+              items: { $ref: "#/components/schemas/PendingDriver" }
+            pagination: { $ref: "#/components/schemas/Pagination" }
+    RejectDriverRequest:
+      type: object
+      required: [rejectionReason]
+      properties:
+        rejectionReason: { type: string, minLength: 5, maxLength: 500, example: Driving license image is unclear. }
+        documentTypes:
+          type: array
+          description: Optional. These documents are marked REJECTED with the same reason.
+          items: { $ref: "#/components/schemas/DocumentType" }
+          example: [DRIVING_LICENSE]
+
+    # --------------------------------------------------------- vehicle (implemented)
+    VehicleInput:
+      type: object
+      required: [vehicleType, make, model, year, color, registrationNumber]
+      properties:
+        vehicleType: { $ref: "#/components/schemas/VehicleType" }
+        make: { type: string, maxLength: 50, example: Honda }
+        model: { type: string, maxLength: 50, example: Shine }
+        year: { type: integer, minimum: 1990, description: Up to next calendar year., example: 2024 }
+        color: { type: string, minLength: 2, maxLength: 30, example: Black }
+        registrationNumber: { type: string, minLength: 4, maxLength: 12, description: Normalised and unique., example: BR01AB1234 }
+        vehicleImage: { type: string, format: uri, nullable: true }
+    VehicleUpdate:
+      type: object
+      minProperties: 1
+      description: Any subset of VehicleInput fields; at least one.
+      properties:
+        vehicleType: { $ref: "#/components/schemas/VehicleType" }
+        make: { type: string, maxLength: 50 }
+        model: { type: string, maxLength: 50 }
+        year: { type: integer, minimum: 1990 }
+        color: { type: string, minLength: 2, maxLength: 30, example: Red }
+        registrationNumber: { type: string, minLength: 4, maxLength: 12 }
+        vehicleImage: { type: string, format: uri, nullable: true }
+    Vehicle:
+      allOf:
+        - type: object
+          properties:
+            id: { $ref: "#/components/schemas/ObjectId" }
+            driverId:
+              allOf: [{ $ref: "#/components/schemas/ObjectId" }]
+              description: DriverProfile id.
+            vehicleType: { $ref: "#/components/schemas/VehicleType" }
+            make: { type: string, example: Honda }
+            model: { type: string, example: Shine }
+            year: { type: integer, example: 2024 }
+            color: { type: string, example: Black }
+            registrationNumber: { type: string, example: BR01AB1234 }
+            vehicleImage: { type: string, format: uri }
+        - $ref: "#/components/schemas/Timestamps"
+    VehicleResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Vehicle fetched successfully. }
+        data: { $ref: "#/components/schemas/Vehicle" }
+
+    # ------------------------------------------------ driver documents (implemented)
+    DriverDocumentInput:
+      type: object
+      required: [documentType, documentNumber, documentUrl]
+      properties:
+        documentType: { $ref: "#/components/schemas/DocumentType" }
+        documentNumber: { type: string, description: "Format depends on documentType (see DocumentType).", example: "234123412341" }
+        documentUrl: { type: string, format: uri, maxLength: 2048, example: "https://files.example.com/aadhaar.jpg" }
+    DriverDocumentUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        documentNumber: { type: string, minLength: 4, maxLength: 30 }
+        documentUrl: { type: string, format: uri, maxLength: 2048, example: "https://files.example.com/driving-license-clear.jpg" }
+    DriverDocument:
+      allOf:
+        - type: object
+          properties:
+            id: { $ref: "#/components/schemas/ObjectId" }
+            driverId:
+              allOf: [{ $ref: "#/components/schemas/ObjectId" }]
+              description: DriverProfile id.
+            documentType: { $ref: "#/components/schemas/DocumentType" }
+            documentNumber: { type: string, example: BR0120230001234 }
+            documentUrl: { type: string, format: uri, example: "https://files.example.com/driving-license.jpg" }
+            verificationStatus: { $ref: "#/components/schemas/VerificationStatus" }
+            rejectionReason: { type: string }
+            verifiedAt: { type: string, format: date-time }
+        - $ref: "#/components/schemas/Timestamps"
+    DriverDocumentResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Document submitted for verification. }
+        data: { $ref: "#/components/schemas/DriverDocument" }
+    DriverDocumentListResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Documents fetched successfully. }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/DriverDocument" }
+
+    # ----------------------------------------------------------------- health
+    HealthReport:
+      type: object
+      properties:
+        status: { type: string, enum: [ok, degraded], example: ok }
+        timestamp: { type: string, format: date-time, example: "2026-10-06T07:45:08.346Z" }
+        uptime: { type: integer, description: Seconds since process start., example: 3600 }
+        services:
+          type: object
+          properties:
+            database: { type: string, enum: [up, down], example: up }
+
+    AvailabilityRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [AVAILABLE, OFFLINE]
+          description: BUSY is set by the ride flow, never by the driver.
+    DriverLocationInput:
+      type: object
+      required: [latitude, longitude]
+      description: Both fields are required. Stored as GeoJSON [longitude, latitude].
+      properties:
+        latitude: { type: number, minimum: -90, maximum: 90, example: 25.5941 }
+        longitude: { type: number, minimum: -180, maximum: 180, example: 85.1376 }
+    DriverLocation:
+      type: object
+      properties:
+        availabilityStatus: { $ref: "#/components/schemas/DriverAvailability" }
+        latitude: { type: number, nullable: true, example: 25.5941 }
+        longitude: { type: number, nullable: true, example: 85.1376 }
+        lastLocationUpdatedAt: { type: string, format: date-time, nullable: true, example: "2026-10-06T09:30:00.000Z" }
+        isLocationStale: { type: boolean, example: false }
+    DriverLocationResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Location updated successfully. }
+        data: { $ref: "#/components/schemas/DriverLocation" }
+    NearbyDriver:
+      type: object
+      description: Internal search result (admin view). Never returned to passengers.
+      properties:
+        driverId:
+          allOf: [{ $ref: "#/components/schemas/ObjectId" }]
+          description: DriverProfile id.
+        userId: { $ref: "#/components/schemas/ObjectId" }
+        vehicleType: { $ref: "#/components/schemas/VehicleType" }
+        distanceMeters: { type: number, example: 1001 }
+        latitude: { type: number, example: 25.6031 }
+        longitude: { type: number, example: 85.1376 }
+        lastLocationUpdatedAt: { type: string, format: date-time }
+
+    # ------------------------------------------------------------ rides (implemented)
+    Place:
+      type: object
+      required: [address, latitude, longitude]
+      properties:
+        address: { type: string, minLength: 3, maxLength: 300, example: "Boring Road, Patna" }
+        latitude: { type: number, minimum: -90, maximum: 90, example: 25.6127 }
+        longitude: { type: number, minimum: -180, maximum: 180, example: 85.1589 }
+    RideRequest:
+      type: object
+      required: [pickup, destination, vehicleType]
+      description: Only these fields are read. Distance, duration and fare are always calculated by the server.
+      properties:
+        pickup: { $ref: "#/components/schemas/Place" }
+        destination: { $ref: "#/components/schemas/Place" }
+        vehicleType: { $ref: "#/components/schemas/VehicleType" }
+    RideEstimate:
+      type: object
+      properties:
+        pickup: { $ref: "#/components/schemas/Place" }
+        destination: { $ref: "#/components/schemas/Place" }
+        vehicleType: { $ref: "#/components/schemas/VehicleType" }
+        distanceKm: { type: number, example: 4.7 }
+        durationMinutes: { type: integer, example: 6 }
+        estimatedFare: { type: number, description: Whole rupees., example: 58 }
+        currency: { type: string, example: INR }
+        fareBreakdown:
+          type: object
+          properties:
+            baseFare: { type: number, example: 20 }
+            distanceFare: { type: number, example: 38 }
+            minimumFare: { type: number, example: 30 }
+        routeSource: { type: string, enum: [OSRM, ESTIMATED], example: OSRM }
+        routeGeometry: { type: string, nullable: true, description: Encoded polyline (precision 5)., example: "ekeyCeqygO..." }
+    RideEstimateResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Ride estimate calculated successfully. }
+        data: { $ref: "#/components/schemas/RideEstimate" }
+    AssignedDriver:
+      type: object
+      description: Public driver details only. No phone, licence, documents or live location.
+      properties:
+        name: { type: string, example: Ravi Kumar }
+        profileImage: { type: string, format: uri, nullable: true }
+        rating: { type: number, nullable: true, description: Ratings are not implemented yet (always null)., example: null }
+        vehicle:
+          type: object
+          nullable: true
+          properties:
+            vehicleType: { $ref: "#/components/schemas/VehicleType" }
+            make: { type: string, example: Honda }
+            model: { type: string, example: Shine }
+            color: { type: string, example: Black }
+            registrationNumber: { type: string, example: BR01AB1234 }
+    Ride:
+      type: object
+      properties:
+        id: { $ref: "#/components/schemas/ObjectId" }
+        status: { $ref: "#/components/schemas/RideStatus" }
+        pickup: { $ref: "#/components/schemas/Place" }
+        destination: { $ref: "#/components/schemas/Place" }
+        vehicleType: { $ref: "#/components/schemas/VehicleType" }
+        distanceKm: { type: number, example: 4.7 }
+        estimatedDurationMinutes: { type: integer, example: 6 }
+        estimatedFare: { type: number, example: 58 }
+        currency: { type: string, example: INR }
+        routeSource: { type: string, enum: [OSRM, ESTIMATED] }
+        assignedAt: { type: string, format: date-time, nullable: true }
+        cancelledAt: { type: string, format: date-time, nullable: true }
+        cancelledBy: { type: string, enum: [PASSENGER, DRIVER, SYSTEM], nullable: true }
+        cancellationReason: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        driver:
+          type: object
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/AssignedDriver" }]
+        passenger:
+          type: object
+          description: Only for DRIVER and ADMIN viewers.
+          properties:
+            name: { type: string, example: Saumya Singh }
+        matching:
+          type: object
+          description: Only for ADMIN viewers.
+          properties:
+            offeredDriverIds: { type: array, items: { $ref: "#/components/schemas/ObjectId" } }
+            rejectedDriverIds: { type: array, items: { $ref: "#/components/schemas/ObjectId" } }
+            matchingAttempts: { type: integer, example: 1 }
+    RideResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Ride fetched successfully. }
+        data: { $ref: "#/components/schemas/Ride" }
+    BookRideResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        message:
+          type: string
+          description: '"Ride booked. Looking for a driver." or "No drivers are currently available. We''ll keep searching."'
+          example: Ride booked. Looking for a driver.
+        data:
+          allOf:
+            - $ref: "#/components/schemas/Ride"
+            - type: object
+              properties:
+                driversContacted: { type: integer, description: How many drivers the ride was offered to., example: 3 }
+    RideOffer:
+      allOf:
+        - $ref: "#/components/schemas/Ride"
+        - type: object
+          properties:
+            distanceToPickupKm: { type: number, nullable: true, example: 1.2 }
+    RideOfferListResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Ride requests fetched successfully. }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/RideOffer" }
+    RideListResponse:
+      type: object
+      x-status: planned
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Rides fetched successfully. }
+        data:
+          type: object
+          properties:
+            rides:
+              type: array
+              items: { $ref: "#/components/schemas/Ride" }
+            pagination: { $ref: "#/components/schemas/Pagination" }
+    CancelRideRequest:
+      type: object
+      properties:
+        reason: { type: string, maxLength: 300, example: Changed my plans }
+
+    # ===================================================================
+    # PLANNED schemas: proposed contracts, subject to change
+    # ===================================================================
+    AssignedDriverResponse:
+      type: object
+      x-status: planned
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Driver fetched successfully. }
+        data:
+          type: object
+          description: Public driver details only; no documents or licence number.
+          properties:
+            name: { type: string, example: Ravi Kumar }
+            profileImage: { type: string, format: uri }
+            phone: { $ref: "#/components/schemas/Phone" }
+            vehicle:
+              type: object
+              properties:
+                vehicleType: { $ref: "#/components/schemas/VehicleType" }
+                make: { type: string, example: Honda }
+                model: { type: string, example: Shine }
+                color: { type: string, example: Black }
+                registrationNumber: { type: string, example: BR01AB1234 }
+            location:
+              type: object
+              allOf: [{ $ref: "#/components/schemas/DriverLocation" }]
+              nullable: true
+            averageRating: { type: number, nullable: true, example: 4.8 }
+    Payment:
+      x-status: planned
+      allOf:
+        - type: object
+          properties:
+            id: { $ref: "#/components/schemas/ObjectId" }
+            rideId: { $ref: "#/components/schemas/ObjectId" }
+            passengerId: { $ref: "#/components/schemas/ObjectId" }
+            driverId: { $ref: "#/components/schemas/ObjectId" }
+            amount: { $ref: "#/components/schemas/Money" }
+            method: { $ref: "#/components/schemas/PaymentMethod" }
+            status: { $ref: "#/components/schemas/PaymentStatus" }
+            paidAt: { type: string, format: date-time, nullable: true }
+        - $ref: "#/components/schemas/Timestamps"
+    PaymentResponse:
+      type: object
+      x-status: planned
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Payment fetched successfully. }
+        data: { $ref: "#/components/schemas/Payment" }
+    PaymentListResponse:
+      type: object
+      x-status: planned
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Payments fetched successfully. }
+        data:
+          type: object
+          properties:
+            payments:
+              type: array
+              items: { $ref: "#/components/schemas/Payment" }
+            pagination: { $ref: "#/components/schemas/Pagination" }
+    RatingInput:
+      type: object
+      x-status: planned
+      required: [score]
+      properties:
+        score: { type: integer, minimum: 1, maximum: 5, example: 5 }
+        comment: { type: string, maxLength: 500, example: Smooth ride and polite driver. }
+    Rating:
+      x-status: planned
+      allOf:
+        - type: object
+          properties:
+            id: { $ref: "#/components/schemas/ObjectId" }
+            rideId: { $ref: "#/components/schemas/ObjectId" }
+            fromRole: { type: string, enum: [PASSENGER, DRIVER] }
+            score: { type: integer, minimum: 1, maximum: 5, example: 5 }
+            comment: { type: string, example: Smooth ride and polite driver. }
+        - $ref: "#/components/schemas/Timestamps"
+    RatingResponse:
+      type: object
+      x-status: planned
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Rating submitted successfully. }
+        data: { $ref: "#/components/schemas/Rating" }
+    Notification:
+      type: object
+      x-status: planned
+      properties:
+        id: { $ref: "#/components/schemas/ObjectId" }
+        type: { type: string, description: "e.g. RIDE_ACCEPTED, DRIVER_VERIFIED.", example: DRIVER_VERIFIED }
+        title: { type: string, example: You're verified! }
+        body: { type: string, example: Your documents were approved. You can now go online. }
+        data:
+          type: object
+          additionalProperties: true
+          description: Optional ids for deep links, e.g. rideId.
+        isRead: { type: boolean, example: false }
+        createdAt: { type: string, format: date-time }
+    NotificationResponse:
+      type: object
+      x-status: planned
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Notification marked as read. }
+        data: { $ref: "#/components/schemas/Notification" }
+    NotificationListResponse:
+      type: object
+      x-status: planned
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Notifications fetched successfully. }
+        data:
+          type: object
+          properties:
+            notifications:
+              type: array
+              items: { $ref: "#/components/schemas/Notification" }
+            unreadCount: { type: integer, example: 3 }
+            pagination: { $ref: "#/components/schemas/Pagination" }
+    AuditLog:
+      type: object
+      x-status: planned
+      properties:
+        id: { $ref: "#/components/schemas/ObjectId" }
+        adminId: { $ref: "#/components/schemas/ObjectId" }
+        action: { type: string, example: DRIVER_VERIFIED }
+        targetType: { type: string, example: DriverProfile }
+        targetId: { $ref: "#/components/schemas/ObjectId" }
+        details: { type: object, additionalProperties: true }
+        createdAt: { type: string, format: date-time }

@@ -1,0 +1,17 @@
+# The database is MongoDB Atlas (hosted), so only the backend runs here.
+# MONGODB_URI, JWT_SECRET, EMAIL_* etc. are read from .env.
+services:
+  backend:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+    ports:
+      - "${PORT:-5000}:${PORT:-5000}"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || 5000) + '/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 3

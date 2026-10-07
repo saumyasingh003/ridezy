@@ -1,0 +1,862 @@
+{
+  "info": {
+    "name": "Ridezy API",
+    "description": "Run a login request first: it saves the JWT into a collection variable, and each folder sends it as `Authorization: Bearer <token>` automatically.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000/api"
+    },
+    {
+      "key": "passengerEmail",
+      "value": "passenger@example.com"
+    },
+    {
+      "key": "driverEmail",
+      "value": "driver@example.com"
+    },
+    {
+      "key": "adminEmail",
+      "value": "admin@example.com"
+    },
+    {
+      "key": "password",
+      "value": "StrongPassword123"
+    },
+    {
+      "key": "passengerToken",
+      "value": ""
+    },
+    {
+      "key": "driverToken",
+      "value": ""
+    },
+    {
+      "key": "adminToken",
+      "value": ""
+    },
+    {
+      "key": "placeId",
+      "value": ""
+    },
+    {
+      "key": "documentId",
+      "value": ""
+    },
+    {
+      "key": "driverId",
+      "value": ""
+    },
+    {
+      "key": "rideId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth (no token needed)",
+      "item": [
+        {
+          "name": "Login as passenger",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('passengerToken', pm.response.json().data.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{passengerEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login as driver",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('driverToken', pm.response.json().data.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{driverEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login as admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('adminToken', pm.response.json().data.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Passenger (Bearer {{passengerToken}})",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{passengerToken}}",
+            "type": "string"
+          }
+        ]
+      },
+      "item": [
+        {
+          "name": "Create profile",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/passengers/profile",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"9876543210\",\n  \"gender\": \"FEMALE\",\n  \"dateOfBirth\": \"2003-04-15\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get profile",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/passengers/profile"
+          }
+        },
+        {
+          "name": "Update profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/passengers/profile",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profileImage\": \"https://example.com/profile.jpg\",\n  \"dateOfBirth\": \"2003-04-15\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete profile",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/passengers/profile"
+          }
+        },
+        {
+          "name": "Add saved place (HOME)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const places = pm.response.json().data.savedPlaces;",
+                  "if (places && places.length) pm.collectionVariables.set('placeId', places[places.length - 1].id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/passengers/saved-places",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"HOME\",\n  \"label\": \"Home\",\n  \"address\": \"12 MG Road, Patna, Bihar\",\n  \"latitude\": 25.6093,\n  \"longitude\": 85.1376\n}"
+            }
+          }
+        },
+        {
+          "name": "Update saved place",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/passengers/saved-places/{{placeId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"My flat\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete saved place",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/passengers/saved-places/{{placeId}}"
+          }
+        },
+        {
+          "name": "Try to change driver availability (expect 403)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/drivers/availability",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"AVAILABLE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Try to update driver location (expect 403)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/drivers/location",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 25.5941,\n  \"longitude\": 85.1376\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Driver (Bearer {{driverToken}})",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{driverToken}}",
+            "type": "string"
+          }
+        ]
+      },
+      "item": [
+        {
+          "name": "Create profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('driverId', pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/drivers/profile",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"9123456789\",\n  \"licenseNumber\": \"BR0120230001234\",\n  \"dateOfBirth\": \"1995-08-20\",\n  \"gender\": \"MALE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get profile",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/drivers/profile"
+          }
+        },
+        {
+          "name": "Update profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/drivers/profile",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profileImage\": \"https://example.com/driver.jpg\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Add vehicle",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/drivers/vehicle",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vehicleType\": \"BIKE\",\n  \"make\": \"Honda\",\n  \"model\": \"Shine\",\n  \"year\": 2024,\n  \"color\": \"Black\",\n  \"registrationNumber\": \"BR01AB1234\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get vehicle",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/drivers/vehicle"
+          }
+        },
+        {
+          "name": "Update vehicle",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/drivers/vehicle",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"color\": \"Red\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete vehicle",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/drivers/vehicle"
+          }
+        },
+        {
+          "name": "Submit driving licence",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('documentId', pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/drivers/documents",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documentType\": \"DRIVING_LICENSE\",\n  \"documentNumber\": \"BR0120230001234\",\n  \"documentUrl\": \"https://files.example.com/driving-license.jpg\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Submit Aadhaar",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('documentId', pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/drivers/documents",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documentType\": \"AADHAAR\",\n  \"documentNumber\": \"2341 2341 2341\",\n  \"documentUrl\": \"https://files.example.com/aadhaar.jpg\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List documents",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/drivers/documents"
+          }
+        },
+        {
+          "name": "Re-submit document",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/drivers/documents/{{documentId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documentUrl\": \"https://files.example.com/driving-license-clear.jpg\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Update location",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/drivers/location",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 25.5941,\n  \"longitude\": 85.1376\n}"
+            }
+          }
+        },
+        {
+          "name": "Get my location",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/drivers/location"
+          }
+        },
+        {
+          "name": "Go online (AVAILABLE)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/drivers/availability",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"AVAILABLE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Go offline",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/drivers/availability",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"OFFLINE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Invalid latitude (expect 400)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/drivers/location",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 150,\n  \"longitude\": 85\n}"
+            }
+          }
+        },
+        {
+          "name": "Invalid longitude (expect 400)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/drivers/location",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 25.5941,\n  \"longitude\": 200\n}"
+            }
+          }
+        },
+        {
+          "name": "Missing longitude (expect 400)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/drivers/location",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 25.5941\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Rides",
+      "item": [
+        {
+          "name": "Passenger (Bearer {{passengerToken}})",
+          "auth": {
+            "type": "bearer",
+            "bearer": [
+              {
+                "key": "token",
+                "value": "{{passengerToken}}",
+                "type": "string"
+              }
+            ]
+          },
+          "item": [
+            {
+              "name": "1. Estimate fare",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": "{{baseUrl}}/rides/estimate",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"pickup\": {\n    \"address\": \"Boring Road, Patna\",\n    \"latitude\": 25.6127,\n    \"longitude\": 85.1589\n  },\n  \"destination\": {\n    \"address\": \"Patna Junction\",\n    \"latitude\": 25.5941,\n    \"longitude\": 85.1376\n  },\n  \"vehicleType\": \"BIKE\"\n}"
+                }
+              }
+            },
+            {
+              "name": "2. Book ride",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const j = pm.response.json(); const id = j.data && j.data.id; if (id) pm.collectionVariables.set(\"rideId\", id);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": "{{baseUrl}}/rides",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"pickup\": {\n    \"address\": \"Boring Road, Patna\",\n    \"latitude\": 25.6127,\n    \"longitude\": 85.1589\n  },\n  \"destination\": {\n    \"address\": \"Patna Junction\",\n    \"latitude\": 25.5941,\n    \"longitude\": 85.1376\n  },\n  \"vehicleType\": \"BIKE\"\n}"
+                }
+              }
+            },
+            {
+              "name": "Current ride",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/rides/current"
+              }
+            },
+            {
+              "name": "Get ride",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/rides/{{rideId}}"
+              }
+            },
+            {
+              "name": "Cancel ride",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": "{{baseUrl}}/rides/{{rideId}}/cancel",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Changed my plans\"\n}"
+                }
+              }
+            },
+            {
+              "name": "Try to book with a fake fare (fare is ignored)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": "{{baseUrl}}/rides",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"pickup\": {\n    \"address\": \"Boring Road, Patna\",\n    \"latitude\": 25.6127,\n    \"longitude\": 85.1589\n  },\n  \"destination\": {\n    \"address\": \"Patna Junction\",\n    \"latitude\": 25.5941,\n    \"longitude\": 85.1376\n  },\n  \"vehicleType\": \"BIKE\",\n  \"estimatedFare\": 1,\n  \"distanceKm\": 0.1\n}"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Driver (Bearer {{driverToken}})",
+          "auth": {
+            "type": "bearer",
+            "bearer": [
+              {
+                "key": "token",
+                "value": "{{driverToken}}",
+                "type": "string"
+              }
+            ]
+          },
+          "item": [
+            {
+              "name": "3. My ride requests",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const j = pm.response.json(); const id = j.data && j.data[0] && j.data[0].id; if (id) pm.collectionVariables.set(\"rideId\", id);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/drivers/rides/requests"
+              }
+            },
+            {
+              "name": "4. Accept ride",
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/rides/{{rideId}}/accept"
+              }
+            },
+            {
+              "name": "Reject ride",
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/rides/{{rideId}}/reject"
+              }
+            },
+            {
+              "name": "My current ride",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/rides/current"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin (Bearer {{adminToken}})",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{adminToken}}",
+            "type": "string"
+          }
+        ]
+      },
+      "item": [
+        {
+          "name": "Nearby available drivers",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/nearby?latitude=25.5941&longitude=85.1376&radiusMeters=5000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers",
+                "nearby"
+              ],
+              "query": [
+                {
+                  "key": "latitude",
+                  "value": "25.5941"
+                },
+                {
+                  "key": "longitude",
+                  "value": "85.1376"
+                },
+                {
+                  "key": "radiusMeters",
+                  "value": "5000"
+                },
+                {
+                  "key": "vehicleType",
+                  "value": "BIKE",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Pending drivers",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/pending-verification?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers",
+                "pending-verification"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Verify driver",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/admin/drivers/{{driverId}}/verify"
+          }
+        },
+        {
+          "name": "Reject driver",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/drivers/{{driverId}}/reject",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rejectionReason\": \"Driving license image is unclear.\",\n  \"documentTypes\": [\"DRIVING_LICENSE\"]\n}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
