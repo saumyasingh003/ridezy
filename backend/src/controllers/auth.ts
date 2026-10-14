@@ -8,6 +8,7 @@ import { User, PUBLIC_ROLES, type UserDocument } from "../models/User.js";
 import { EmailVerificationOTP } from "../models/EmailVerificationOTP.js";
 import { getAuthUser } from "../middlewares/auth.js";
 import { emailService } from "../utils/email.js";
+import { logger } from "../utils/logger.js";
 import { AppError } from "../utils/AppError.js";
 import { signAccessToken } from "../utils/jwt.js";
 import { phoneSchema } from "../utils/validation.js";
@@ -266,6 +267,13 @@ async function sendNewOtp(user: UserDocument): Promise<string> {
     throw err;
   }
 
-  await emailService.sendVerificationEmail(user.email, user.name, otp, OTP_TTL_MINUTES);
+  try {
+    await emailService.sendVerificationEmail(user.email, user.name, otp, OTP_TTL_MINUTES);
+  } catch (err) {
+    // The client only gets a generic message; the log needs the real reason
+    // (e.g. an SMTP timeout on a host that blocks mail ports).
+    logger.error(`Verification email to ${user.email} failed`, err);
+    throw err;
+  }
   return otp;
 }

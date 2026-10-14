@@ -49,14 +49,10 @@ services:
       - key: APP_URL
         sync: false
 
-      # ---- Email (required in production) ----
-      - key: EMAIL_HOST
-        sync: false
-      - key: EMAIL_PORT
-        sync: false
-      - key: EMAIL_USER
-        sync: false
-      - key: EMAIL_PASSWORD
+      # ---- Email ----
+      # Render's free plan blocks SMTP ports, so email goes over HTTPS via Brevo.
+      # EMAIL_FROM (e.g. "Ridezy <you@gmail.com>") must be a verified sender in Brevo.
+      - key: BREVO_API_KEY
         sync: false
       - key: EMAIL_FROM
         sync: false

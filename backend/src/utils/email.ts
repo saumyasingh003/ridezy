@@ -2,8 +2,18 @@ import nodemailer, { type Transporter } from "nodemailer";
 import { env } from "../config/env.js";
 import { logger } from "./logger.js";
 
+/*
+ * Two ways to deliver email:
+ * - Brevo HTTPS API when BREVO_API_KEY is set. Works on hosts that block SMTP
+ *   ports (Render's free plan blocks outbound 25/465/587).
+ * - SMTP otherwise (local development; a throwaway Ethereal inbox if no SMTP).
+ */
+
 let transporterPromise: Promise<Transporter> | undefined;
 let usingEthereal = false;
+
+// A blocked or unreachable SMTP server must fail fast, not hang the request.
+const SMTP_TIMEOUTS = { connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 20_000 };
 
 async function createTransporter(): Promise<Transporter> {
   const { host, port, user, password } = env.email;
@@ -14,6 +24,7 @@ async function createTransporter(): Promise<Transporter> {
       port,
       secure: port === 465, // 465 = implicit TLS; 587 upgrades with STARTTLS
       auth: { user, pass: password },
+      ...SMTP_TIMEOUTS,
     });
   }
 
@@ -36,6 +47,50 @@ function getTransporter(): Promise<Transporter> {
     throw err;
   });
   return transporterPromise;
+}
+
+interface OutgoingEmail {
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+}
+
+/** "Ridezy <no-reply@ridezy.app>" → { name: "Ridezy", email: "no-reply@ridezy.app" } */
+function parseFrom(from: string): { name?: string; email: string } {
+  const match = from.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+  return match ? { name: match[1] || undefined, email: match[2]! } : { email: from.trim() };
+}
+
+/** Brevo transactional email API (HTTPS, port 443). */
+async function sendWithBrevo(apiKey: string, message: OutgoingEmail): Promise<void> {
+  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: { "api-key": apiKey, "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({
+      sender: parseFrom(env.email.from),
+      to: [{ email: message.to }],
+      subject: message.subject,
+      htmlContent: message.html,
+      textContent: message.text,
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Brevo responded ${res.status}: ${detail.slice(0, 300)}`);
+  }
+}
+
+/** Sends one email with whichever transport is configured. Returns a preview URL for Ethereal. */
+async function deliver(message: OutgoingEmail): Promise<string | null> {
+  if (env.email.brevoApiKey) {
+    await sendWithBrevo(env.email.brevoApiKey, message);
+    return null;
+  }
+  const transporter = await getTransporter();
+  const info = await transporter.sendMail({ from: env.email.from, ...message });
+  return usingEthereal ? (nodemailer.getTestMessageUrl(info) || null) : null;
 }
 
 function escapeHtml(value: string): string {
@@ -86,17 +141,11 @@ function verificationEmail(name: string, otp: string, minutes: number) {
 }
 
 async function sendVerificationEmail(to: string, name: string, otp: string, expiresInMinutes: number): Promise<void> {
-  const transporter = await getTransporter();
-  const message = verificationEmail(name, otp, expiresInMinutes);
-
-  const info = await transporter.sendMail({ from: env.email.from, to, ...message });
+  const preview = await deliver({ to, ...verificationEmail(name, otp, expiresInMinutes) });
   // Log that an email went out, never its contents (the OTP).
   logger.info(`Verification email sent to ${to}`);
-
-  if (usingEthereal) {
-    // Dev-only link to view the caught email in the browser.
-    logger.info(`Preview email: ${nodemailer.getTestMessageUrl(info)}`);
-  }
+  // Dev-only link to view the caught email in the browser.
+  if (preview) logger.info(`Preview email: ${preview}`);
 }
 
 export interface PaymentReceiptEmail {
@@ -232,10 +281,9 @@ function paymentReceiptEmail(r: PaymentReceiptEmail) {
 }
 
 async function sendPaymentReceiptEmail(to: string, receipt: PaymentReceiptEmail): Promise<void> {
-  const transporter = await getTransporter();
-  const info = await transporter.sendMail({ from: env.email.from, to, ...paymentReceiptEmail(receipt) });
+  const preview = await deliver({ to, ...paymentReceiptEmail(receipt) });
   logger.info(`Payment receipt #${receipt.receiptNumber} emailed to ${to}`);
-  if (usingEthereal) logger.info(`Preview email: ${nodemailer.getTestMessageUrl(info)}`);
+  if (preview) logger.info(`Preview email: ${preview}`);
 }
 
 // Exported as an object so tests can replace methods with a mock.

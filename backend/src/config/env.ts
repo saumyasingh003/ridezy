@@ -102,6 +102,10 @@ const envSchema = z
     EMAIL_USER: z.string().optional(),
     EMAIL_PASSWORD: z.string().optional(),
     EMAIL_FROM: z.string().default("Ridezy <no-reply@ridezy.app>"),
+    // Send through Brevo's HTTPS API instead of SMTP. Use this on hosts that
+    // block SMTP ports (e.g. Render's free plan). The EMAIL_FROM address must
+    // be a verified sender in Brevo. When set, the SMTP settings aren't needed.
+    BREVO_API_KEY: z.string().min(10).optional(),
   })
   .superRefine((value, ctx) => {
     if (Boolean(value.SUPABASE_URL) !== Boolean(value.SUPABASE_SERVICE_ROLE_KEY)) {
@@ -112,7 +116,7 @@ const envSchema = z
       ctx.addIssue({ code: "custom", path: ["RAZORPAY_KEY_SECRET"], message: "PAYMENT_PROVIDER=razorpay needs RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET" });
     }
     if (value.NODE_ENV !== "production") return;
-    for (const key of ["EMAIL_HOST", "EMAIL_PORT", "EMAIL_USER", "EMAIL_PASSWORD"] as const) {
+    for (const key of value.BREVO_API_KEY ? [] : (["EMAIL_HOST", "EMAIL_PORT", "EMAIL_USER", "EMAIL_PASSWORD"] as const)) {
       if (!value[key]) {
         ctx.addIssue({ code: "custom", path: [key], message: `${key} is required in production` });
       }
@@ -202,5 +206,6 @@ export const env = {
     user: raw.EMAIL_USER,
     password: raw.EMAIL_PASSWORD,
     from: raw.EMAIL_FROM,
+    brevoApiKey: raw.BREVO_API_KEY,
   },
 } as const;
