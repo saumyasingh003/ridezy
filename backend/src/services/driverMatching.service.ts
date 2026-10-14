@@ -32,13 +32,16 @@ export function rankCandidates(candidates: NearbyDriver[]): NearbyDriver[] {
  * Returns the updated ride, or null if the ride stopped SEARCHING meanwhile.
  */
 export async function offerRideToNearbyDrivers(ride: RideDocument): Promise<RideDocument | null> {
-  const batchSize = env.rides.matchingBatchSize;
+  const matchAll = env.rides.matchAllDrivers;
+  // Match-all mode offers the ride to every eligible driver at once.
+  const batchSize = matchAll ? 100 : env.rides.matchingBatchSize;
   const alreadyContacted = new Set([...ride.offeredDriverIds, ...ride.rejectedDriverIds].map(String));
 
   const candidates = await findNearbyAvailableDrivers({
     latitude: ride.pickup.latitude,
     longitude: ride.pickup.longitude,
     vehicleType: ride.vehicleType,
+    matchAll,
     limit: batchSize + alreadyContacted.size,
   });
   const picked = rankCandidates(candidates.filter((c) => !alreadyContacted.has(c.driverId))).slice(0, batchSize);

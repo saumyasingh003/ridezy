@@ -25,8 +25,8 @@ class NoRouteError extends Error {}
 
 /* ------------------------------- Providers --------------------------------- */
 
-const ROAD_FACTOR = 1.3; // roads are ~30% longer than a straight line in a city
-const FALLBACK_SPEED_KMH = 20; // conservative city average
+export const ROAD_FACTOR = 1.3; // roads are ~30% longer than a straight line in a city
+export const FALLBACK_SPEED_KMH = 20; // conservative city average
 
 /** Offline straight-line estimate. Deterministic: used in tests and as the fallback. */
 const haversineProvider: RouteProvider = {

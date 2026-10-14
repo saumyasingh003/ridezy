@@ -1,5 +1,6 @@
 import { Schema, Types, model, type HydratedDocument, type InferSchemaType } from "mongoose";
 import { VEHICLE_TYPES } from "./Vehicle.js";
+import { DRIVER_TIP_OPTIONS } from "./Payment.js";
 import { cleanJSON } from "./shared.js";
 
 /* ------------------------------- State machine ------------------------------ */
@@ -84,6 +85,26 @@ const rideSchema = new Schema(
     lastMatchedAt: { type: Date },
 
     assignedAt: { type: Date },
+    arrivedAt: { type: Date },
+    startedAt: { type: Date },
+    completedAt: { type: Date },
+    // Upfront pricing: the fare quoted at booking is what is charged.
+    finalFare: { type: Number, min: 0 },
+    // Tip the passenger offered while booking/riding (shown to drivers in offers).
+    // It becomes the payment's default tip; the passenger can still change it when paying.
+    tipAmount: { type: Number, enum: DRIVER_TIP_OPTIONS, default: 0 },
+
+    // Ride OTP: created on accept, shown only to the passenger, required to
+    // start the ride (proves the right passenger is in the vehicle). Short-lived
+    // and attempt-limited, so it is stored as-is rather than hashed.
+    startOtp: { type: String },
+    startOtpAttempts: { type: Number, default: 0 },
+
+    // Written in the same transaction as every chat message, so a message and
+    // a concurrent complete/cancel conflict on this document and MongoDB
+    // serialises them: no message can be saved after the ride has ended.
+    lastMessageAt: { type: Date },
+
     cancelledAt: { type: Date },
     cancelledBy: { type: String, enum: CANCELLED_BY },
     cancellationReason: { type: String },

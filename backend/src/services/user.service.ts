@@ -10,12 +10,13 @@ export interface UserContact {
   name: string;
   email: string;
   phone: string | null;
+  createdAt?: Date;
 }
 
 export async function getUserContact(userId: string | Types.ObjectId): Promise<UserContact> {
-  const user = await User.findById(userId, { name: 1, email: 1, phone: 1 });
+  const user = await User.findById(userId, { name: 1, email: 1, phone: 1, createdAt: 1 });
   if (!user) throw new AppError(401, "Authentication required."); // account deleted
-  return { name: user.name, email: user.email, phone: user.phone ?? null };
+  return { name: user.name, email: user.email, phone: user.phone ?? null, createdAt: user.createdAt };
 }
 
 export async function setUserPhone(userId: string, phone: string | undefined): Promise<void> {

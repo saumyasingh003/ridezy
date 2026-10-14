@@ -1,13 +1,17 @@
 import type { Types } from "mongoose";
+import { User } from "../models/User.js";
 import { DriverProfile, type DriverProfileDocument } from "../models/DriverProfile.js";
 import { Vehicle } from "../models/Vehicle.js";
-import { DriverDocument, documentNumberError, type DocumentType } from "../models/DriverDocument.js";
+import { Ride } from "../models/Ride.js";
+import { DOCUMENT_TYPES, DriverDocument, documentNumberError, type DocumentType } from "../models/DriverDocument.js";
 import type { Gender } from "../models/shared.js";
 import { AppError } from "../utils/AppError.js";
 import { duplicateKeyField, toMongoUpdate } from "../utils/mongo.js";
 import { getUserContact, setUserPhone } from "./user.service.js";
+import { inBackground, notifications } from "./notification.service.js";
 
 export interface DriverProfileInput {
+  name?: string;
   phone?: string;
   profileImage?: string | null;
   dateOfBirth?: Date | null;
@@ -117,9 +121,20 @@ export async function getProfile(userId: string) {
 }
 
 export async function updateProfile(userId: string, input: DriverProfileInput) {
-  const { phone, ...fields } = input;
-  const current = await findOwnProfile(userId);
-  await setUserPhone(userId, phone);
+  const { phone, name, ...fields } = input;
+  let current = await DriverProfile.findOne({ userId });
+  if (!current) {
+    if (fields.licenseNumber) {
+      return createProfile(userId, { ...input, licenseNumber: fields.licenseNumber });
+    }
+    throw new AppError(404, NOT_FOUND);
+  }
+  if (phone !== undefined) {
+    await setUserPhone(userId, phone);
+  }
+  if (name) {
+    await User.updateOne({ _id: userId }, { $set: { name: name.trim() } });
+  }
 
   const update = toMongoUpdate(fields);
   if (Object.keys(update).length) {
@@ -132,12 +147,44 @@ export async function updateProfile(userId: string, input: DriverProfileInput) {
   return getProfile(userId);
 }
 
+export async function deleteProfile(userId: string): Promise<void> {
+  const profile = await DriverProfile.findOne({ userId });
+  if (profile) {
+    await Vehicle.deleteMany({ driverId: profile._id });
+    await DriverDocument.deleteMany({ driverId: profile._id });
+    await DriverProfile.deleteOne({ _id: profile._id });
+  }
+  await Vehicle.deleteMany({ driverId: userId });
+  await DriverDocument.deleteMany({ driverId: userId });
+  await User.deleteOne({ _id: userId });
+}
+
+/**
+ * Tells admins once a PENDING driver has a vehicle and every required document,
+ * i.e. the submission can be reviewed. Runs in the background after the
+ * driver's own change has been saved.
+ */
+function notifyAdminsIfReadyForReview(profileId: Types.ObjectId): void {
+  inBackground(async () => {
+    const profile = await DriverProfile.findById(profileId, { userId: 1, verificationStatus: 1 });
+    if (!profile || profile.verificationStatus !== "PENDING") return;
+    const [hasVehicle, types, user] = await Promise.all([
+      Vehicle.exists({ driverId: profile._id }),
+      DriverDocument.distinct("documentType", { driverId: { $in: [profile._id, profile.userId] } }),
+      User.findById(profile.userId, { name: 1 }),
+    ]);
+    const complete = Boolean(hasVehicle) && DOCUMENT_TYPES.every((t) => types.includes(t));
+    if (complete) await notifications.driverReadyForReview(user?.name ?? "A driver", String(profile._id));
+  });
+}
+
 /* ---------------------------------- Vehicle --------------------------------- */
 
 export async function addVehicle(userId: string, input: VehicleInput) {
   const profile = await findOwnProfile(userId);
   const vehicle = await Vehicle.create({ ...input, driverId: profile._id }).catch(rethrowDuplicate);
   await resetVerification(profile._id);
+  notifyAdminsIfReadyForReview(profile._id);
   return vehicle.toJSON();
 }
 
@@ -145,7 +192,7 @@ export async function getVehicle(userId: string) {
   const profile = await findOwnProfile(userId);
   const vehicle = await Vehicle.findOne({ driverId: profile._id });
   if (!vehicle) throw new AppError(404, VEHICLE_NOT_FOUND);
-  return vehicle.toJSON();
+  return { ...vehicle.toJSON(), vehicleImage: vehicle.vehicleImage ?? null };
 }
 
 export async function updateVehicle(userId: string, changes: Partial<VehicleInput>) {
@@ -156,6 +203,7 @@ export async function updateVehicle(userId: string, changes: Partial<VehicleInpu
   if (!vehicle) throw new AppError(404, VEHICLE_NOT_FOUND);
 
   await resetVerification(profile._id);
+  notifyAdminsIfReadyForReview(profile._id);
   return vehicle.toJSON();
 }
 
@@ -173,12 +221,15 @@ export async function submitDocument(userId: string, input: DocumentInput) {
   // Status fields are not part of `input`; the schema default (PENDING) applies.
   const document = await DriverDocument.create({ ...input, driverId: profile._id }).catch(rethrowDuplicate);
   await resetVerification(profile._id);
+  notifyAdminsIfReadyForReview(profile._id);
   return document.toJSON();
 }
 
 export async function listDocuments(userId: string) {
   const profile = await findOwnProfile(userId);
-  const documents = await DriverDocument.find({ driverId: profile._id }).sort({ documentType: 1 });
+  const documents = await DriverDocument.find({
+    $or: [{ driverId: profile._id }, { driverId: profile.userId }],
+  }).sort({ documentType: 1 });
   return documents.map((doc) => doc.toJSON());
 }
 
@@ -209,5 +260,35 @@ export async function updateDocument(
   if (!document) throw new AppError(404, "Document not found.");
 
   await resetVerification(profile._id);
+  notifyAdminsIfReadyForReview(profile._id);
   return document.toJSON();
 }
+
+/* ----------------------------- Ride History -------------------------------- */
+
+export async function listRideHistory(userId: string) {
+  const profile = await DriverProfile.findOne({ userId });
+  if (!profile) return [];
+
+  const rides = await Ride.find({ assignedDriverId: profile._id })
+    .populate("passengerId", "name phone")
+    .sort({ createdAt: -1 })
+    .limit(30);
+
+  return rides.map((ride) => {
+    const passenger = ride.passengerId as any;
+    return {
+      id: String(ride._id),
+      passenger: passenger?.name || "Passenger",
+      route: `${ride.pickup.address} → ${ride.destination.address}`,
+      pickup: ride.pickup.address,
+      dropoff: ride.destination.address,
+      fare: `₹${ride.estimatedFare}`,
+      rawFare: ride.estimatedFare,
+      status: ride.status,
+      time: new Date(ride.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      date: new Date(ride.createdAt).toISOString(),
+    };
+  });
+}
+

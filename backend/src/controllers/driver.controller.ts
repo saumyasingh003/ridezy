@@ -11,17 +11,26 @@ import {
   nonEmpty,
   objectIdSchema,
   phoneSchema,
-  urlSchema,
 } from "../utils/validation.js";
+import { saveImageAndGetLink } from "../utils/imageStorage.js";
 
 /* -------------------------------- Validation -------------------------------- */
+
+// Accepts a URL link, a data URL, empty string or null.
+const imageFieldSchema = z
+  .string()
+  .trim()
+  .transform((val) => (val === "" ? null : val))
+  .nullable()
+  .optional();
 
 // Only these fields can be written by a driver. verificationStatus, verifiedAt,
 // rejectionReason, availabilityStatus and userId are not listed, so Zod strips
 // them: a driver can never mark themselves VERIFIED.
 const profileFields = {
+  name: z.string().trim().min(2, "Name must be at least 2 characters").max(50).optional(),
   phone: phoneSchema.optional(),
-  profileImage: urlSchema.nullable().optional(),
+  profileImage: imageFieldSchema,
   dateOfBirth: dateOfBirthSchema(18).nullable().optional(),
   gender: genderSchema.nullable().optional(),
   licenseNumber: codeSchema("License number", 8, 20),
@@ -42,7 +51,7 @@ const vehicleFields = {
     .max(currentYear + 1, `Year can't be after ${currentYear + 1}`),
   color: z.string().trim().min(2, "Color is required").max(30),
   registrationNumber: codeSchema("Registration number", 4, 12),
-  vehicleImage: urlSchema.nullable().optional(),
+  vehicleImage: imageFieldSchema,
 };
 
 const addVehicleSchema = z.object(vehicleFields);
@@ -51,7 +60,7 @@ const updateVehicleSchema = nonEmpty(z.object(vehicleFields).partial());
 const documentFields = {
   documentType: z.enum(DOCUMENT_TYPES, { error: `Document type must be one of ${DOCUMENT_TYPES.join(", ")}` }),
   documentNumber: codeSchema("Document number", 4, 30),
-  documentUrl: urlSchema,
+  documentUrl: z.string().trim().min(1, "Document URL or file is required"),
 };
 
 // The number format depends on the type (e.g. Aadhaar = 12 digits).
@@ -72,6 +81,9 @@ const documentParamsSchema = z.object({ documentId: objectIdSchema });
 export async function createProfile(req: Request, res: Response): Promise<void> {
   const { userId } = getAuthUser(req);
   const input = createProfileSchema.parse(req.body ?? {});
+  if (input.profileImage !== undefined) {
+    input.profileImage = await saveImageAndGetLink(input.profileImage, req, "profile");
+  }
   const profile = await driverService.createProfile(userId, input);
   res.status(201).json({ success: true, message: "Driver profile created successfully.", data: profile });
 }
@@ -85,8 +97,17 @@ export async function getProfile(req: Request, res: Response): Promise<void> {
 export async function updateProfile(req: Request, res: Response): Promise<void> {
   const { userId } = getAuthUser(req);
   const input = updateProfileSchema.parse(req.body ?? {});
+  if (input.profileImage !== undefined) {
+    input.profileImage = await saveImageAndGetLink(input.profileImage, req, "profile");
+  }
   const profile = await driverService.updateProfile(userId, input);
   res.json({ success: true, message: "Profile updated successfully.", data: profile });
+}
+
+export async function deleteProfile(req: Request, res: Response): Promise<void> {
+  const { userId } = getAuthUser(req);
+  await driverService.deleteProfile(userId);
+  res.json({ success: true, message: "Driver profile deleted successfully." });
 }
 
 /* ------------------------------ Vehicle handlers ---------------------------- */
@@ -94,6 +115,9 @@ export async function updateProfile(req: Request, res: Response): Promise<void> 
 export async function addVehicle(req: Request, res: Response): Promise<void> {
   const { userId } = getAuthUser(req);
   const input = addVehicleSchema.parse(req.body ?? {});
+  if (input.vehicleImage !== undefined) {
+    input.vehicleImage = await saveImageAndGetLink(input.vehicleImage, req, "vehicle");
+  }
   const vehicle = await driverService.addVehicle(userId, input);
   res.status(201).json({ success: true, message: "Vehicle added successfully.", data: vehicle });
 }
@@ -107,6 +131,9 @@ export async function getVehicle(req: Request, res: Response): Promise<void> {
 export async function updateVehicle(req: Request, res: Response): Promise<void> {
   const { userId } = getAuthUser(req);
   const changes = updateVehicleSchema.parse(req.body ?? {});
+  if (changes.vehicleImage !== undefined) {
+    changes.vehicleImage = await saveImageAndGetLink(changes.vehicleImage, req, "vehicle");
+  }
   const vehicle = await driverService.updateVehicle(userId, changes);
   res.json({ success: true, message: "Vehicle updated successfully.", data: vehicle });
 }
@@ -122,6 +149,7 @@ export async function deleteVehicle(req: Request, res: Response): Promise<void> 
 export async function submitDocument(req: Request, res: Response): Promise<void> {
   const { userId } = getAuthUser(req);
   const input = documentSchema.parse(req.body ?? {});
+  input.documentUrl = (await saveImageAndGetLink(input.documentUrl, req, "doc")) || input.documentUrl;
   const document = await driverService.submitDocument(userId, input);
   res.status(201).json({ success: true, message: "Document submitted for verification.", data: document });
 }
@@ -136,6 +164,16 @@ export async function updateDocument(req: Request, res: Response): Promise<void>
   const { userId } = getAuthUser(req);
   const { documentId } = documentParamsSchema.parse(req.params);
   const changes = updateDocumentSchema.parse(req.body ?? {});
+  if (changes.documentUrl !== undefined) {
+    changes.documentUrl = (await saveImageAndGetLink(changes.documentUrl, req, "doc")) || changes.documentUrl;
+  }
   const document = await driverService.updateDocument(userId, documentId, changes);
   res.json({ success: true, message: "Document re-submitted for verification.", data: document });
 }
+
+export async function listRideHistory(req: Request, res: Response): Promise<void> {
+  const { userId } = getAuthUser(req);
+  const rides = await driverService.listRideHistory(userId);
+  res.json({ success: true, message: "Ride history fetched successfully.", data: rides });
+}
+

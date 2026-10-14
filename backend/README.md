@@ -36,6 +36,11 @@ Profile APIs: `/api/passengers/*` (PASSENGER), `/api/drivers/*` (DRIVER), `/api/
 Ride APIs: `/api/rides/*` (estimate, book, current, cancel, accept/reject). Full reference at `/api/docs`.
 Import `postman/Ridezy.postman_collection.json` into Postman to try every endpoint.
 
+Ride chat & in-app calls (passenger ↔ assigned driver, while the ride is active) run over
+Socket.IO + WebRTC. REST: `GET /api/rides/:rideId/messages` and `/communication`. The
+socket event contract, error codes and WebRTC (STUN/TURN) setup are in
+[`docs/realtime-events.md`](docs/realtime-events.md).
+
 ## Scripts
 
 | Script | Purpose |

@@ -7,6 +7,7 @@ import { MongoMemoryServer } from "mongodb-memory-server";
 const mongod = await MongoMemoryServer.create();
 
 process.env.NODE_ENV = "test";
+process.env.PAYMENT_PROVIDER = "mock"; // tests never call real Razorpay
 process.env.MONGODB_URI = mongod.getUri("ridezy-profile-test");
 process.env.JWT_SECRET = "test-jwt-secret-that-is-at-least-32-characters";
 process.env.OTP_SECRET = "test-otp-secret-that-is-at-least-32-characters";
@@ -372,6 +373,25 @@ describe("Driver profile, vehicle and documents", () => {
 
     assert.equal(res.status, 404);
     assert.equal((await DriverDocument.findById(aDoc.id))!.documentUrl, aDoc.documentUrl);
+  });
+
+  it("deletes driver profile along with associated vehicle and documents", async () => {
+    const d = await makeCompleteDriver(9);
+    assert.ok(await DriverProfile.findById(d.profileId));
+    assert.equal(await Vehicle.countDocuments({ driverId: d.profileId }), 1);
+    assert.equal(await DriverDocument.countDocuments({ driverId: d.profileId }), DOCS.length);
+
+    const res = await api("DELETE", "/api/drivers/profile", d.token);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.success, true);
+    assert.equal(res.body.message, "Driver profile deleted successfully.");
+
+    assert.equal(await DriverProfile.findById(d.profileId), null);
+    assert.equal(await Vehicle.countDocuments({ driverId: d.profileId }), 0);
+    assert.equal(await DriverDocument.countDocuments({ driverId: d.profileId }), 0);
+
+    const getRes = await api("GET", "/api/drivers/profile", d.token);
+    assert.equal(getRes.status, 404);
   });
 });
 

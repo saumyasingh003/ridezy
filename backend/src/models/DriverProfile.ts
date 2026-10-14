@@ -36,6 +36,8 @@ const driverProfileSchema = new Schema(
     verifiedAt: { type: Date },
     reviewedBy: { type: Types.ObjectId, ref: "User" }, // audit: which admin verified or rejected
     rejectionReason: { type: String },
+    suspensionReason: { type: String },
+    suspendedAt: { type: Date },
 
     // ---- Availability & location (driverLocation.service.ts) ----
     // OFFLINE/AVAILABLE are set by the driver; BUSY will be set by the Ride module.

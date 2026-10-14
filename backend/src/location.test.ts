@@ -7,6 +7,8 @@ import { MongoMemoryServer } from "mongodb-memory-server";
 const mongod = await MongoMemoryServer.create();
 
 process.env.NODE_ENV = "test";
+process.env.PAYMENT_PROVIDER = "mock"; // tests never call real Razorpay
+process.env.MATCH_ALL_DRIVERS = "false"; // strict matching rules are what these tests check
 process.env.MONGODB_URI = mongod.getUri("ridezy-location-test");
 process.env.JWT_SECRET = "test-jwt-secret-that-is-at-least-32-characters";
 process.env.OTP_SECRET = "test-otp-secret-that-is-at-least-32-characters";
@@ -17,6 +19,7 @@ const { connectDB, disconnectDB } = await import("./config/db.js");
 const { User } = await import("./models/User.js");
 const { DriverProfile } = await import("./models/DriverProfile.js");
 const { Vehicle } = await import("./models/Vehicle.js");
+const { DriverDocument } = await import("./models/DriverDocument.js");
 const { signAccessToken } = await import("./utils/jwt.js");
 const { findNearbyAvailableDrivers } = await import("./services/driverLocation.service.js");
 
@@ -67,9 +70,12 @@ async function makeDriver(options: {
   vehicleType?: "BIKE" | "AUTO" | "CAB" | null;
   at?: { latitude: number; longitude: number };
   locationAgeSeconds?: number;
+  /** Status of both required documents; defaults to the profile status. */
+  documentStatus?: "PENDING" | "VERIFIED" | "REJECTED";
 } = {}) {
   const { verificationStatus = "VERIFIED", availabilityStatus = "OFFLINE", vehicleType = "BIKE", at, locationAgeSeconds = 0 } =
     options;
+  const documentStatus = options.documentStatus ?? verificationStatus;
   const user = await makeUser("DRIVER");
   const profile = await DriverProfile.create({
     userId: user.id,
@@ -94,6 +100,15 @@ async function makeDriver(options: {
       registrationNumber: `BR01AB${String(seq).padStart(4, "0")}`,
     });
   }
+  await DriverDocument.create(
+    (["AADHAAR", "DRIVING_LICENSE"] as const).map((documentType) => ({
+      driverId: profile._id,
+      documentType,
+      documentNumber: documentType === "AADHAAR" ? "234567890123" : `BR01DL${String(seq).padStart(8, "0")}`,
+      documentUrl: "https://example.com/doc.png",
+      verificationStatus: documentStatus,
+    })),
+  );
   return { ...user, profileId: profile.id as string };
 }
 
@@ -105,7 +120,7 @@ before(async () => {
 });
 
 afterEach(async () => {
-  await Promise.all([User.deleteMany({}), DriverProfile.deleteMany({}), Vehicle.deleteMany({})]);
+  await Promise.all([User.deleteMany({}), DriverProfile.deleteMany({}), Vehicle.deleteMany({}), DriverDocument.deleteMany({})]);
 });
 
 after(async () => {
@@ -335,5 +350,14 @@ describe("GET /api/admin/drivers/nearby", () => {
     assert.equal((await api("GET", `/api/admin/drivers/nearby${q}`, passenger.token)).status, 403);
     assert.equal((await api("GET", `/api/admin/drivers/nearby${q}`, driver.token)).status, 403);
     assert.equal((await api("GET", "/api/admin/drivers/nearby?latitude=150&longitude=85", admin.token)).status, 400);
+  });
+});
+
+describe("Going online needs verified documents", () => {
+  it("refuses a VERIFIED driver whose documents are still pending", async () => {
+    const d = await makeDriver({ documentStatus: "PENDING", at: { latitude: 25.61, longitude: 85.14 } });
+    const res = await api("PATCH", "/api/drivers/availability", d.token, { status: "AVAILABLE" });
+    assert.equal(res.status, 403);
+    assert.match(res.body.message, /documents/);
   });
 });

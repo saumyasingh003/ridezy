@@ -6,6 +6,7 @@ import type { Server as SocketServer } from "socket.io";
 
 // Infrastructure tests: no database connection is opened here.
 process.env.NODE_ENV = "test";
+process.env.PAYMENT_PROVIDER = "mock"; // tests never call real Razorpay
 process.env.MONGODB_URI = "mongodb://127.0.0.1:1/unused";
 process.env.JWT_SECRET = "test-jwt-secret-that-is-at-least-32-characters";
 process.env.OTP_SECRET = "test-otp-secret-that-is-at-least-32-characters";
@@ -77,24 +78,71 @@ describe("error handling", () => {
 });
 
 describe("Socket.IO", () => {
-  it("accepts WebSocket connections", async () => {
-    const wsUrl = `${baseUrl.replace("http", "ws")}/socket.io/?EIO=4&transport=websocket`;
-    const ws = new WebSocket(wsUrl);
-
-    // Engine.IO "open" packet ("0{...}"), then Socket.IO namespace "connect" ack ("40{...}").
-    const connectAck = await new Promise<string>((resolve, reject) => {
+  /**
+   * Raw WebSocket handshake: Engine.IO "open" ("0{...}"), then the Socket.IO
+   * namespace connect with auth ("40{...}"). Resolves with the server's reply:
+   * "40{...}" (connected) or "44{...}" (connect error).
+   */
+  function handshake(auth?: object): Promise<string> {
+    const ws = new WebSocket(`${baseUrl.replace("http", "ws")}/socket.io/?EIO=4&transport=websocket`);
+    return new Promise<string>((resolve, reject) => {
       ws.addEventListener("error", () => reject(new Error("WebSocket error")));
       ws.addEventListener("message", (event) => {
         const data = String(event.data);
-        if (data.startsWith("0")) ws.send("40");
-        if (data.startsWith("40")) resolve(data);
+        if (data.startsWith("0")) ws.send(`40${auth ? JSON.stringify(auth) : ""}`);
+        if (data.startsWith("40") || data.startsWith("44")) {
+          resolve(data);
+          ws.close();
+        }
       });
     });
+  }
 
-    const { sid } = JSON.parse(connectAck.slice(2)) as { sid: string };
+  it("accepts WebSocket connections with a valid JWT", async () => {
+    const { signAccessToken } = await import("./utils/jwt.js");
+    const token = signAccessToken({ userId: "6ac49c10dc4a882c54446f3f", role: "PASSENGER" });
+
+    const reply = await handshake({ token });
+    assert.ok(reply.startsWith("40"), reply);
+    const { sid } = JSON.parse(reply.slice(2)) as { sid: string };
     assert.ok(sid);
-    assert.equal(io.of("/").sockets.size, 1);
+  });
 
-    ws.close();
+  it("refuses connections without a valid JWT", async () => {
+    for (const auth of [undefined, { token: "not-a-jwt" }]) {
+      const reply = await handshake(auth);
+      assert.ok(reply.startsWith("44"), reply);
+      assert.match(reply, /UNAUTHENTICATED/);
+    }
+  });
+});
+
+describe("POST /api/upload", () => {
+  // A real 1x1 PNG.
+  const PNG =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+  async function upload(body: object, token?: string) {
+    const res = await fetch(`${baseUrl}/api/upload`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(body),
+    });
+    return { status: res.status, body: (await res.json()) as { data?: { url: string; previewUrl: string } } };
+  }
+
+  it("requires a signed-in user", async () => {
+    assert.equal((await upload({ file: PNG })).status, 401);
+  });
+
+  it("checks the real file type, not just the declared one", async () => {
+    const { signAccessToken } = await import("./utils/jwt.js");
+    const token = signAccessToken({ userId: "6ac49c10dc4a882c54446f3f", role: "DRIVER" });
+    const fake = Buffer.from("<script>alert(1)</script>").toString("base64");
+    assert.equal((await upload({ file: `data:image/png;base64,${fake}` }, token)).status, 400);
+
+    const ok = await upload({ file: PNG, category: "vehicle" }, token);
+    assert.equal(ok.status, 201);
+    assert.match(ok.body.data!.url, /\/uploads\/vehicle_.+\.png$/); // local fallback without Supabase
   });
 });

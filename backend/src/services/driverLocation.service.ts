@@ -1,8 +1,13 @@
 import { env } from "../config/env.js";
 import { DriverProfile, type DriverProfileDocument } from "../models/DriverProfile.js";
-import { Vehicle, type VEHICLE_TYPES } from "../models/Vehicle.js";
+import { Vehicle, VEHICLE_TYPES } from "../models/Vehicle.js";
+import { FALLBACK_SPEED_KMH, ROAD_FACTOR } from "./route.service.js";
 import { User } from "../models/User.js";
+import { DOCUMENT_TYPES, DriverDocument } from "../models/DriverDocument.js";
 import { AppError } from "../utils/AppError.js";
+import { logger } from "../utils/logger.js";
+import { publishDriverLocation } from "./rideTracking.service.js";
+import type { Types } from "mongoose";
 
 // Single source of truth for driver availability and location.
 // REST controllers use it today; Socket.IO handlers (Step 5) and the Ride
@@ -70,6 +75,34 @@ function assertValidCoordinates({ latitude, longitude }: Coordinates): void {
   if (!ok) throw new AppError(400, "Invalid coordinates.");
 }
 
+/* ------------------------------ Ride eligibility ---------------------------- */
+
+/**
+ * A driver may get near rides only when the profile is VERIFIED *and* every
+ * required document (DOCUMENT_TYPES) is VERIFIED. The profile flag alone isn't
+ * trusted: a single document can be rejected or reset without it.
+ *
+ * Documents are matched by profile id and, for older records, by user id
+ * (admin.service looks them up the same way).
+ */
+export async function hasAllDocumentsVerified(profile: { _id: Types.ObjectId; userId: Types.ObjectId }): Promise<boolean> {
+  const verifiedTypes = await DriverDocument.distinct("documentType", {
+    driverId: { $in: [profile._id, profile.userId] },
+    documentType: { $in: DOCUMENT_TYPES },
+    verificationStatus: "VERIFIED",
+  });
+  return verifiedTypes.length === DOCUMENT_TYPES.length;
+}
+
+/** Profile VERIFIED + all documents VERIFIED. */
+export async function isEligibleForRides(profile: {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  verificationStatus: string;
+}): Promise<boolean> {
+  return profile.verificationStatus === "VERIFIED" && (await hasAllDocumentsVerified(profile));
+}
+
 /* --------------------------------- Location -------------------------------- */
 
 /**
@@ -92,6 +125,10 @@ export async function updateDriverLocation(userId: string, coords: Coordinates):
   if (!profile) {
     if (!(await DriverProfile.exists({ userId }))) throw new AppError(404, NOT_FOUND);
     throw new AppError(403, "Only verified drivers can share their location.");
+  }
+  // On a ride: push the new position to the passenger right away (live tracking).
+  if (profile.availabilityStatus === "BUSY") {
+    publishDriverLocation(profile).catch((err: unknown) => logger.error("Publishing driver location failed", err));
   }
   return toView(profile);
 }
@@ -130,6 +167,9 @@ async function goAvailable(userId: string): Promise<DriverLocationView> {
   }
   if (profile.verificationStatus !== "VERIFIED") {
     throw new AppError(403, `Your driver account is ${profile.verificationStatus}. Only verified drivers can go online.`);
+  }
+  if (!(await hasAllDocumentsVerified(profile))) {
+    throw new AppError(403, "All your documents must be verified before you can go online.");
   }
   if (!(await Vehicle.exists({ driverId: profile._id }))) {
     throw new AppError(400, "Add a vehicle before going online.");
@@ -189,8 +229,11 @@ export async function findNearbyAvailableDrivers(options: {
   radiusMeters?: number;
   limit?: number;
   vehicleType?: VehicleType;
+  /** Ignore distance, location age and vehicle type (MATCH_ALL_DRIVERS). Still nearest first. */
+  matchAll?: boolean;
 }): Promise<NearbyDriver[]> {
-  const { radiusMeters = env.location.nearbyRadiusMeters, limit = 20, vehicleType } = options;
+  const { radiusMeters = env.location.nearbyRadiusMeters, limit = 20, matchAll = false } = options;
+  const vehicleType = matchAll ? undefined : options.vehicleType;
   assertValidCoordinates(options);
 
   return DriverProfile.aggregate<NearbyDriver>([
@@ -202,12 +245,12 @@ export async function findNearbyAvailableDrivers(options: {
         near: toPoint(options),
         key: "location",
         distanceField: "distanceMeters",
-        maxDistance: radiusMeters,
+        ...(matchAll ? {} : { maxDistance: radiusMeters }),
         spherical: true,
         query: {
           availabilityStatus: "AVAILABLE",
           verificationStatus: "VERIFIED",
-          lastLocationUpdatedAt: { $gte: freshnessCutoff() },
+          ...(matchAll ? {} : { lastLocationUpdatedAt: { $gte: freshnessCutoff() } }),
         },
       },
     },
@@ -215,6 +258,25 @@ export async function findNearbyAvailableDrivers(options: {
     { $lookup: { from: Vehicle.collection.name, localField: "_id", foreignField: "driverId", as: "vehicle" } },
     { $unwind: "$vehicle" },
     ...(vehicleType ? [{ $match: { "vehicle.vehicleType": vehicleType } }] : []),
+    // Every required document must be VERIFIED (see hasAllDocumentsVerified).
+    {
+      $lookup: {
+        from: DriverDocument.collection.name,
+        let: { profileId: "$_id", userId: "$userId" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $in: ["$driverId", ["$$profileId", "$$userId"]] },
+              documentType: { $in: DOCUMENT_TYPES },
+              verificationStatus: "VERIFIED",
+            },
+          },
+          { $group: { _id: "$documentType" } },
+        ],
+        as: "verifiedDocs",
+      },
+    },
+    { $match: { $expr: { $eq: [{ $size: "$verifiedDocs" }, DOCUMENT_TYPES.length] } } },
     { $limit: limit },
     {
       $project: {
@@ -229,4 +291,40 @@ export async function findNearbyAvailableDrivers(options: {
       },
     },
   ]);
+}
+
+/* ------------------------- Availability for passengers ---------------------- */
+
+export interface VehicleAvailability {
+  count: number;
+  /** Rough minutes for the nearest one to reach the point; null when none. */
+  etaMinutes: number | null;
+}
+
+/**
+ * How many ride-eligible drivers of each vehicle type are near a point, for
+ * the passenger's vehicle picker. Uses exactly the same filter as matching
+ * (findNearbyAvailableDrivers), so "2 nearby" means 2 drivers would really be
+ * offered the ride. Returns counts and an ETA only: never driver ids or
+ * coordinates, so passengers can't locate individual drivers.
+ */
+export async function countNearbyAvailableByType(point: Coordinates) {
+  const matchAll = env.rides.matchAllDrivers;
+  const drivers = await findNearbyAvailableDrivers({ ...point, limit: 200, matchAll });
+  const byType = Object.fromEntries(
+    VEHICLE_TYPES.map((type) => {
+      // Match-all mode: every online driver can take any type of ride.
+      const ofType = matchAll ? drivers : drivers.filter((d) => d.vehicleType === type); // nearest first
+      const nearest = ofType[0];
+      const nearestKm = nearest ? (nearest.distanceMeters / 1000) * ROAD_FACTOR : null;
+      return [
+        type,
+        {
+          count: ofType.length,
+          etaMinutes: nearestKm === null ? null : Math.max(1, Math.round((nearestKm / FALLBACK_SPEED_KMH) * 60)),
+        },
+      ];
+    }),
+  ) as Record<VehicleType, VehicleAvailability>;
+  return { radiusKm: env.location.nearbyRadiusMeters / 1000, matchAllDrivers: matchAll, byType };
 }

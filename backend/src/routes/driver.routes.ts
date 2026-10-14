@@ -13,6 +13,7 @@ driverRouter.use(requireAuth, requireRole("DRIVER"));
 driverRouter.post("/profile", driver.createProfile);
 driverRouter.get("/profile", driver.getProfile);
 driverRouter.patch("/profile", driver.updateProfile);
+driverRouter.delete("/profile", driver.deleteProfile);
 
 driverRouter.post("/vehicle", driver.addVehicle);
 driverRouter.get("/vehicle", driver.getVehicle);
@@ -25,3 +26,7 @@ driverRouter.patch("/documents/:documentId", driver.updateDocument);
 
 // Pending ride offers for this driver (Step 5 will also push them over Socket.IO).
 driverRouter.get("/rides/requests", listRideRequests);
+
+// Ride history for this driver
+driverRouter.get("/rides/history", driver.listRideHistory);
+

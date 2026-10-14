@@ -23,15 +23,17 @@ tags:
   - name: Driver Location
     description: "**Implemented.** Driver availability (online/offline) and current location. Role: DRIVER."
   - name: Rides
-    description: "**Implemented** (history, start and complete are planned). Fare estimate, booking, ride details, cancellation, and driver accept/reject."
+    description: "**Implemented.** Fare estimate, booking, ride details, cancellation, driver accept/reject, trip lifecycle (arrive → start with ride OTP → complete) and ride history."
   - name: Ride Matching
-    description: "Matching runs inside the backend when a ride is booked (implemented as a service, no public endpoint). The endpoints below are **planned**."
+    description: "**Implemented.** Matching runs automatically when a ride is booked (and re-runs while it searches). These endpoints let the passenger search again and track the assigned driver."
+  - name: Ride Communication
+    description: "**Implemented.** In-ride chat and in-app voice calls between a ride's passenger and its assigned driver, open from driver acceptance until the ride completes or is cancelled. Sending messages and everything about calls runs over **Socket.IO** (not REST); see `docs/realtime-events.md` for the event contract. These REST endpoints serve chat history and the communication status a screen needs on load."
   - name: Payments
-    description: "**Planned.** Ride payments and payment history."
+    description: "**Implemented** with a simulated gateway (no real money). UPI/CARD are charged instantly; CASH stays PENDING until the ride's driver confirms it."
   - name: Ratings & Reviews
-    description: "**Planned.** Post-ride ratings between passenger and driver."
+    description: "**Implemented.** Only riders rate: the passenger rates the driver (1-5, optional comment), once per ride, any time after the ride is paid. Drivers don't rate passengers. Driver averages appear in ride responses and admin views."
   - name: Notifications
-    description: "**Planned.** In-app notifications."
+    description: "**Implemented.** In-app notifications created automatically after ride, payment, rating and verification events. Each user sees only their own; they expire after 90 days."
   - name: Admin
     description: "**Partly implemented.** Driver verification is implemented; user/ride/payment management and analytics are planned. Role: ADMIN."
   - name: Health
@@ -491,6 +493,23 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      tags: [Driver]
+      operationId: deleteDriverProfile
+      x-status: implemented
+      x-required-role: DRIVER
+      summary: Delete the driver profile
+      description: "**Auth:** Bearer JWT · **Role:** DRIVER. Deletes the caller's driver profile along with associated vehicle and submitted documents."
+      responses:
+        "200":
+          description: Profile deleted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+              example: { success: true, message: Driver profile deleted successfully. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /api/drivers/vehicle:
     post:
@@ -925,14 +944,59 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
               example: { success: false, message: You have no active ride. }
 
+  /api/rides/nearby-drivers:
+    get:
+      tags: [Rides]
+      operationId: nearbyDrivers
+      x-status: implemented
+      x-required-role: PASSENGER
+      summary: Drivers available near a point (per vehicle type)
+      description: |
+        **Auth:** Bearer JWT · **Role:** PASSENGER · **Rate limit:** shared with /estimate.
+
+        For the vehicle picker: how many drivers of each type would be offered a ride booked at
+        this pickup. Uses the same filter as matching (AVAILABLE, VERIFIED with all documents
+        verified, fresh location, within the search radius). Returns counts and a rough ETA only:
+        never driver ids or coordinates.
+      parameters:
+        - { name: latitude, in: query, required: true, schema: { type: number, example: 25.6093 } }
+        - { name: longitude, in: query, required: true, schema: { type: number, example: 85.1376 } }
+      responses:
+        "200":
+          description: Counts per vehicle type.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Nearby drivers counted successfully. }
+                  data:
+                    type: object
+                    properties:
+                      radiusKm: { type: number, example: 5 }
+                      byType:
+                        type: object
+                        example:
+                          BIKE: { count: 2, etaMinutes: 4 }
+                          AUTO: { count: 0, etaMinutes: null }
+                          CAB: { count: 1, etaMinutes: 6 }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /api/rides/history:
     get:
       tags: [Rides]
       operationId: getRideHistory
-      x-status: planned
+      x-status: implemented
       x-required-role: PASSENGER, DRIVER
-      summary: "[PLANNED] My ride history"
-      description: "**Planned.** **Auth:** Bearer JWT · **Role:** PASSENGER or DRIVER. Newest first."
+      summary: My ride history
+      description: |
+        **Auth:** Bearer JWT · **Role:** PASSENGER or DRIVER.
+
+        A passenger gets their own rides; a driver gets the rides assigned to them. Newest first,
+        paginated, optionally filtered by `status`. Invalid `status` or `limit` > 100 returns **400**.
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/Limit"
@@ -974,6 +1038,47 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/rides/{rideId}/tip:
+    parameters:
+      - $ref: "#/components/parameters/RideId"
+    patch:
+      tags: [Rides]
+      operationId: setRideTip
+      x-status: implemented
+      x-required-role: PASSENGER
+      summary: Offer a driver tip (while the ride is active)
+      description: |
+        **Auth:** Bearer JWT · **Role:** the ride's PASSENGER.
+
+        Sets, changes or removes (`0`) the tip offered for the driver while the ride is active
+        (`SEARCHING` → `RIDE_STARTED`), e.g. to attract a driver while searching. Drivers see it as
+        `tipAmount` in ride offers. It is added **once** to the final payment: the cash payment
+        opened on completion includes it, and `POST /rides/{rideId}/payment` without a `tip` uses it
+        (sending a `tip` there overrides it).
+
+        Allowed values: `0, 20, 40, 50, 60` (else **400**). Ride completed or cancelled → **409**
+        (choose the tip when paying). Someone else's ride → **404**.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tip]
+              properties:
+                tip: { type: integer, enum: [0, 20, 40, 50, 60], example: 40 }
+      responses:
+        "200":
+          description: Tip saved; the updated ride.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /api/rides/{rideId}/cancel:
     parameters:
@@ -1105,19 +1210,24 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /api/rides/{rideId}/start:
+  /api/rides/{rideId}/arrive:
     parameters:
       - $ref: "#/components/parameters/RideId"
     post:
       tags: [Rides]
-      operationId: startRide
-      x-status: planned
+      operationId: arriveAtPickup
+      x-status: implemented
       x-required-role: DRIVER
-      summary: "[PLANNED] Start the ride"
-      description: "**Planned.** **Auth:** Bearer JWT · **Role:** the ride's assigned DRIVER. Moves the ride to `RIDE_STARTED` after pickup."
+      summary: Arrived at pickup
+      description: |
+        **Auth:** Bearer JWT · **Role:** the ride's assigned DRIVER.
+
+        Moves `DRIVER_ASSIGNED` → `DRIVER_ARRIVED` with `arrivedAt`. Required before start (the
+        ride state machine only allows `RIDE_STARTED` from `DRIVER_ARRIVED`). Already arrived,
+        cancelled or completed → **409**. Another driver → **404**.
       responses:
         "200":
-          description: Ride started.
+          description: Driver marked as arrived.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RideResponse" }
@@ -1126,16 +1236,63 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /api/rides/{rideId}/start:
+    parameters:
+      - $ref: "#/components/parameters/RideId"
+    post:
+      tags: [Rides]
+      operationId: startRide
+      x-status: implemented
+      x-required-role: DRIVER
+      summary: Start the ride (with ride OTP)
+      description: |
+        **Auth:** Bearer JWT · **Role:** the ride's assigned DRIVER.
+
+        Moves `DRIVER_ARRIVED` → `RIDE_STARTED`. Needs the 4-digit `otp` the passenger sees in their
+        ride (created when the driver accepts). A wrong code returns **400** with the attempts left;
+        after 5 wrong codes the ride can't be started (**429**) and the passenger can cancel.
+        Not arrived yet → **409**. Another driver → **404**.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [otp]
+              properties:
+                otp: { type: string, pattern: "^\\d{4}$", example: "4821" }
+      responses:
+        "200":
+          description: Ride started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429":
+          description: Too many wrong OTP attempts.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
   /api/rides/{rideId}/complete:
     parameters:
       - $ref: "#/components/parameters/RideId"
     post:
       tags: [Rides]
       operationId: completeRide
-      x-status: planned
+      x-status: implemented
       x-required-role: DRIVER
-      summary: "[PLANNED] Complete the ride"
-      description: "**Planned.** **Auth:** Bearer JWT · **Role:** the ride's assigned DRIVER. Moves the ride to `RIDE_COMPLETED` and sets the final fare."
+      summary: Complete the ride
+      description: |
+        **Auth:** Bearer JWT · **Role:** the ride's assigned DRIVER.
+
+        In one transaction: the ride goes `RIDE_STARTED` → `RIDE_COMPLETED` with `completedAt` and
+        `finalFare` (= the fare quoted at booking; upfront pricing), and the driver goes BUSY →
+        AVAILABLE. Not started yet → **409**. Another driver → **404**.
       responses:
         "200":
           description: Ride completed.
@@ -1156,21 +1313,42 @@ paths:
     post:
       tags: [Ride Matching]
       operationId: matchRide
-      x-status: planned
+      x-status: implemented
       x-required-role: PASSENGER
-      summary: "[PLANNED] (Re)start driver matching"
+      summary: Search for drivers again
       description: |
-        **Planned.** **Auth:** Bearer JWT · **Role:** the ride's PASSENGER.
+        **Auth:** Bearer JWT · **Role:** the ride's PASSENGER · **Rate limit:** shared with /estimate.
 
-        Searches for nearby AVAILABLE, VERIFIED drivers of the requested vehicle type and offers
-        them the ride, e.g. to retry after `NO_DRIVERS_AVAILABLE`. The matching algorithm
-        (radius, ranking, offer timeout) is not decided yet.
+        "Search again" for a `SEARCHING` ride, e.g. after "no drivers available". Resets the
+        round budget (automatic matching stops after 10 rounds) and immediately offers the ride to
+        the nearest AVAILABLE drivers who are VERIFIED with all documents verified, have the
+        requested vehicle type and a fresh location within the search radius. Drivers who declined
+        are not asked again. The search timeout still counts from booking.
+
+        Not searching (assigned, cancelled, timed out) → **409**. Called again within 5 s → **429**.
+        Someone else's ride → **404**.
       responses:
         "202":
-          description: Matching started; the result arrives via ride status / Socket.IO.
+          description: Search round done. `newlyContacted` = drivers offered the ride in this round.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/RideResponse" }
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Searching again. New drivers have been contacted. }
+                  data:
+                    allOf:
+                      - $ref: "#/components/schemas/Ride"
+                      - type: object
+                        properties:
+                          driversContacted: { type: integer, example: 3 }
+                          newlyContacted: { type: integer, example: 1 }
+        "429":
+          description: Searched less than 5 seconds ago.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -1182,14 +1360,18 @@ paths:
     get:
       tags: [Ride Matching]
       operationId: getAssignedDriver
-      x-status: planned
+      x-status: implemented
       x-required-role: PASSENGER
-      summary: "[PLANNED] Get the assigned driver"
+      summary: Get the assigned driver (with live location)
       description: |
-        **Planned.** **Auth:** Bearer JWT · **Role:** the ride's PASSENGER.
+        **Auth:** Bearer JWT · **Role:** the ride's PASSENGER.
 
-        Public driver details for the passenger: name, photo, vehicle, and location while the
-        driver is on the way. Never exposes documents or licence numbers.
+        Public driver details: name, photo, vehicle and plate. While the ride is active
+        (`DRIVER_ASSIGNED` → `RIDE_STARTED`) also the driver's live location with a rough distance
+        and ETA to the pickup (before the ride starts) or destination (during it). No location
+        before assignment or after the ride ends. Never phone, licence or documents.
+
+        No driver assigned yet, or someone else's ride → **404**.
       responses:
         "200":
           description: Assigned driver.
@@ -1201,25 +1383,110 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
 
   # ===========================================================================
+  # RIDE COMMUNICATION (implemented; the real-time part is Socket.IO)
+  # ===========================================================================
+  /api/rides/{rideId}/communication:
+    parameters:
+      - $ref: "#/components/parameters/RideId"
+    get:
+      tags: [Ride Communication]
+      operationId: getRideCommunicationStatus
+      x-status: implemented
+      x-required-role: PASSENGER, DRIVER
+      summary: Can I chat/call on this ride right now?
+      description: |
+        **Auth:** Bearer JWT · **Role:** the ride's PASSENGER or its **currently** assigned DRIVER.
+
+        Call on screen load and after reconnecting. Returns whether chat and calls are open,
+        why not if closed, the other participant (name, role, phone number while the ride is
+        active, whether they're connected), the
+        ride's ongoing call (to restore an incoming/active call UI after a refresh) and the
+        WebRTC ICE servers to use.
+
+        Open while the ride is `DRIVER_ASSIGNED`, `DRIVER_ARRIVING`, `DRIVER_ARRIVED` or
+        `RIDE_STARTED`. `closedReason`: `WAITING_FOR_DRIVER` (still `SEARCHING`),
+        `RIDE_COMPLETED` or `RIDE_CANCELLED`.
+
+        Someone else's ride, or a driver who is no longer assigned → **404** (same as a ride
+        that doesn't exist). ADMIN → **403**.
+      responses:
+        "200":
+          description: Communication status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommunicationStatusResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/rides/{rideId}/messages:
+    parameters:
+      - $ref: "#/components/parameters/RideId"
+    get:
+      tags: [Ride Communication]
+      operationId: listRideMessages
+      x-status: implemented
+      x-required-role: PASSENGER, DRIVER
+      summary: Chat history (cursor-paginated)
+      description: |
+        **Auth:** Bearer JWT · **Role:** the ride's PASSENGER or its **currently** assigned DRIVER.
+
+        Newest page first; messages **within** a page are oldest → newest (ready to render).
+        To load older messages pass `before=<nextCursor>` from the previous page. Cursors don't
+        shift when new messages arrive, unlike page numbers.
+
+        History stays readable after the ride ends (read-only). New messages are **sent over
+        Socket.IO** (`chat:send`), not REST.
+
+        Someone else's ride, or a previously assigned driver → **404**.
+      parameters:
+        - name: before
+          in: query
+          description: Return messages older than this message id (`nextCursor` of the previous page).
+          schema: { $ref: "#/components/schemas/ObjectId" }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 30 }
+      responses:
+        "200":
+          description: One page of messages.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideMessageListResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ===========================================================================
   # PAYMENTS (planned)
   # ===========================================================================
   /api/payments/history:
     get:
       tags: [Payments]
       operationId: getPaymentHistory
-      x-status: planned
+      x-status: implemented
       x-required-role: PASSENGER, DRIVER
-      summary: "[PLANNED] My payment history"
-      description: "**Planned.** **Auth:** Bearer JWT · **Role:** PASSENGER (payments made) or DRIVER (payments received)."
+      summary: My payment history
+      description: |
+        **Auth:** Bearer JWT · **Role:** PASSENGER (payments made) or DRIVER (payments received).
+
+        Newest first, paginated, optional `status` filter. `summary` totals cover all pages:
+        `paidAmount` (COMPLETED) and `pendingAmount` (cash awaiting the driver's confirmation).
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/PaymentStatus" }
       responses:
         "200":
           description: Payments.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PaymentListResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
@@ -1229,14 +1496,43 @@ paths:
     post:
       tags: [Payments]
       operationId: payForRide
-      x-status: planned
+      x-status: implemented
       x-required-role: PASSENGER
-      summary: "[PLANNED] Pay for a completed ride"
+      summary: Pay for a completed ride
       description: |
-        **Planned.** **Auth:** Bearer JWT · **Role:** the ride's PASSENGER.
+        **Auth:** Bearer JWT · **Role:** the ride's PASSENGER.
 
-        Creates the payment for a `COMPLETED` ride. The payment gateway is not chosen yet; for
-        online methods the response is expected to include gateway data for the client.
+        Only for a `RIDE_COMPLETED` ride. The total is computed on the server (any `amount` sent is
+        ignored):
+
+        **Final Amount = Base Fare + Tip + Taxes + Additional Charges − Discounts**
+
+        Base fare = the ride's finalized `finalFare`. `tip` is optional: one of `0, 20, 40, 50, 60` (₹,
+        default 0; anything else → **400**). Fares are tax-inclusive and there are no extra charges or
+        discounts yet, so those are 0. The gateway is charged exactly `amount`, and the same value is
+        stored and shown (`breakdown.total`). The tip goes entirely to the driver and is recorded
+        separately (`tipAmount`).
+
+        Pending CASH (created automatically when the ride completes, with no tip): sending CASH with a
+        different tip updates that pending payment's tip and total. Once a payment is COMPLETED the
+        tip can't change (**409**). `tipPaid` is true only when the payment is COMPLETED.
+        - **UPI / CARD with Razorpay** (`PAYMENT_PROVIDER=razorpay`): creates a Razorpay order for the
+          exact total and returns the payment `PENDING` (**201**) with `data.checkout`
+          (`keyId`, `orderId`, `amount` in paise, `currency`, `prefill`, ...). Open Razorpay Checkout with
+          it, then send its result to `POST /api/payments/{id}/razorpay/verify`. Calling again with the same
+          method and tip returns the same order (**200**); a different tip starts a new order.
+        - **UPI / CARD with the simulated gateway** (`PAYMENT_PROVIDER=mock`): charged instantly →
+          `COMPLETED` (**201**). A declined charge is stored as `FAILED` and returns **402**; the
+          passenger can try again.
+        - **CASH:** `PENDING` (**201**) until the driver calls `POST /api/payments/{id}/confirm-cash`.
+          Sending CASH again returns the same payment (**200**). Choosing UPI/CARD while cash is
+          pending closes the cash attempt (`FAILED`, "Switched to …").
+
+        A ride can't be paid twice: already paid → **409** (also enforced by a unique index, so two
+        simultaneous payments can't both succeed). Not completed → **409**. Someone else's ride → **404**.
+
+        Once a payment is `COMPLETED` the passenger is **emailed a receipt** (in the background; a mail
+        failure never affects the payment), with a "rate your ride" link if they haven't rated yet.
       requestBody:
         required: true
         content:
@@ -1246,14 +1542,198 @@ paths:
               required: [method]
               properties:
                 method: { $ref: "#/components/schemas/PaymentMethod" }
-            example: { method: UPI }
+                tip:
+                  type: integer
+                  enum: [0, 20, 40, 50, 60]
+                  description: Optional driver tip in ₹, added once to the total. Omitted = the tip offered on the ride (`tipAmount`, 0 if none).
+            example: { method: UPI, tip: 40 }
       responses:
         "201":
-          description: Payment created.
+          description: Payment created (COMPLETED for UPI/CARD, PENDING for CASH).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentResponse" }
+        "200":
+          description: The existing pending CASH payment (idempotent).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PaymentResponse" }
         "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402":
+          description: The gateway declined the charge (stored as FAILED).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/payments/{paymentId}/razorpay/verify:
+    parameters:
+      - $ref: "#/components/parameters/PaymentId"
+    post:
+      tags: [Payments]
+      operationId: verifyRazorpayPayment
+      x-status: implemented
+      x-required-role: PASSENGER
+      summary: Confirm a Razorpay Checkout payment
+      description: |
+        **Auth:** Bearer JWT · **Role:** the payment's PASSENGER.
+
+        Send exactly what Razorpay Checkout's `handler` returns. The server:
+        1. checks the order belongs to this PENDING payment,
+        2. verifies `razorpay_signature` = HMAC-SHA256(`order_id|payment_id`, key secret),
+        3. fetches the payment from Razorpay and checks order, **exact amount** (fare + tip, in
+           paise), currency and that it is captured (an authorized payment is captured here),
+        4. marks the payment COMPLETED (then the receipt email and driver notification).
+
+        Idempotent: if the webhook already completed it with the same Razorpay payment id → **200**.
+        Bad signature / wrong order / wrong amount → **400** (stays PENDING). Not captured → **402**.
+        Someone else's payment → **404**. No longer pending (method switched, tip changed) → **409**.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [razorpay_order_id, razorpay_payment_id, razorpay_signature]
+              properties:
+                razorpay_order_id: { type: string, example: order_PZ0V3xgk0nW5a1 }
+                razorpay_payment_id: { type: string, example: pay_PZ0VBCm9Zx1k2Q }
+                razorpay_signature: { type: string, pattern: "^[a-f0-9]{64}$" }
+      responses:
+        "200":
+          description: Paid.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402":
+          description: Razorpay reports the payment as not completed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/payments/razorpay/webhook:
+    post:
+      tags: [Payments]
+      operationId: razorpayWebhook
+      x-status: implemented
+      x-required-role: none (Razorpay servers)
+      summary: Razorpay webhook
+      description: |
+        **Auth:** none (no JWT); authenticated by the `X-Razorpay-Signature` header =
+        HMAC-SHA256(raw request body, `RAZORPAY_WEBHOOK_SECRET`). Configure it in the Razorpay
+        Dashboard → Account & Settings → Webhooks with the URL
+        `https://<public backend>/api/payments/razorpay/webhook`, the same secret, and the events
+        **payment.captured**, **payment.failed** and **order.paid**.
+
+        - `payment.captured` / `order.paid` → same checks as verify, then COMPLETED (idempotent).
+        - `payment.failed` → the reason is noted; the payment stays PENDING (Checkout allows retries).
+        - Anything else, or payments that are not ours / no longer pending → acknowledged and ignored.
+
+        A safety net for when the passenger closes the browser before the Checkout callback reaches us.
+      security: []
+      parameters:
+        - name: X-Razorpay-Signature
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: "Razorpay webhook event (event, payload.payment.entity, ...)." }
+      responses:
+        "200":
+          description: Received.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: object
+                    properties:
+                      handled: { type: string, enum: [paid, failed-attempt, rejected, ignored] }
+        "400":
+          description: Invalid signature.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/upload:
+    post:
+      tags: [Driver]
+      operationId: uploadFile
+      x-status: implemented
+      x-required-role: any signed-in user
+      summary: Upload an image or document
+      description: |
+        **Auth:** Bearer JWT. Body: a base64 data URL (max 5 MB). The real file type is checked from
+        its bytes (JPG, PNG, WEBP, GIF; documents may also be PDF); anything else → **400**.
+
+        Stored in **Supabase Storage** (local `uploads/` folder when Supabase isn't configured):
+        - `profile`, `vehicle`, `img` → public bucket; `url` is a permanent public link.
+        - `doc` (Aadhaar, licence) → **private** bucket; `url` is a private reference to save on the
+          document, and `previewUrl` a signed link valid for 1 hour. Every API response that returns a
+          document turns its reference into a fresh 1-hour signed URL.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, description: "data:image/png;base64,..." }
+                fileName: { type: string }
+                category: { type: string, enum: [profile, vehicle, doc, img], default: img }
+      responses:
+        "201":
+          description: Stored.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: object
+                    properties:
+                      url: { type: string, description: Value to save (public URL, or private reference for documents). }
+                      previewUrl: { type: string, description: Displayable URL (signed for documents). }
+                      category: { type: string }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/payments/{paymentId}/confirm-cash:
+    parameters:
+      - $ref: "#/components/parameters/PaymentId"
+    post:
+      tags: [Payments]
+      operationId: confirmCashPayment
+      x-status: implemented
+      x-required-role: DRIVER
+      summary: Confirm a cash payment was received
+      description: |
+        **Auth:** Bearer JWT · **Role:** the DRIVER of the paid ride.
+
+        Moves a PENDING CASH payment to COMPLETED with `paidAt` and emails the passenger a receipt.
+        Not cash → **409**; already confirmed or no longer pending → **409**. Another driver's
+        payment → **404**.
+      responses:
+        "200":
+          description: Confirmed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -1265,10 +1745,10 @@ paths:
     get:
       tags: [Payments]
       operationId: getPayment
-      x-status: planned
+      x-status: implemented
       x-required-role: PASSENGER, DRIVER, ADMIN
-      summary: "[PLANNED] Get a payment"
-      description: "**Planned.** **Auth:** Bearer JWT · **Role:** the payment's passenger or driver, or ADMIN."
+      summary: Get a payment
+      description: "**Auth:** Bearer JWT · **Role:** the payment's passenger or driver, or ADMIN. Anyone else gets **404**."
       responses:
         "200":
           description: Payment.
@@ -1288,13 +1768,17 @@ paths:
     post:
       tags: [Ratings & Reviews]
       operationId: rateRide
-      x-status: planned
-      x-required-role: PASSENGER, DRIVER
-      summary: "[PLANNED] Rate a completed ride"
+      x-status: implemented
+      x-required-role: PASSENGER
+      summary: Rate the driver of a paid ride
       description: |
-        **Planned.** **Auth:** Bearer JWT · **Role:** the ride's PASSENGER (rates the driver) or DRIVER (rates the passenger).
+        **Auth:** Bearer JWT · **Role:** the ride's PASSENGER (rider). Drivers can't rate (**403**).
 
-        One rating per participant per ride, only after `COMPLETED`.
+        Allowed once the ride is `RIDE_COMPLETED` **and paid** (a COMPLETED payment; pending cash
+        doesn't count). No deadline: the rider can rate any time after paying.
+        `score` is a whole number 1-5; `comment` is optional (trimmed, max 500 characters).
+        One rating per ride, enforced by a unique index (a second one, even sent at the same
+        moment, gets **409**). Not completed or not paid → **409**. Someone else's ride → **404**.
       requestBody:
         required: true
         content:
@@ -1315,10 +1799,13 @@ paths:
     get:
       tags: [Ratings & Reviews]
       operationId: getRideRating
-      x-status: planned
+      x-status: implemented
       x-required-role: PASSENGER, DRIVER, ADMIN
-      summary: "[PLANNED] Get ratings for a ride"
-      description: "**Planned.** **Auth:** Bearer JWT · **Role:** the ride's passenger or driver, or ADMIN."
+      summary: Get ratings for a ride
+      description: |
+        **Auth:** Bearer JWT · **Role:** the ride's passenger or driver, or ADMIN. Anyone else → **404**.
+
+        Both sides' ratings (0-2 items), oldest first.
       responses:
         "200":
           description: Ratings given for this ride.
@@ -1333,7 +1820,72 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/Rating" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/ratings/me:
+    get:
+      tags: [Ratings & Reviews]
+      operationId: getMyRatings
+      x-status: implemented
+      x-required-role: DRIVER
+      summary: Ratings I received
+      description: |
+        **Auth:** Bearer JWT · **Role:** DRIVER. Riders and admins get **403**.
+
+        The ratings riders gave the calling driver, newest first (ties broken by id, so pages never
+        overlap), paginated, with an optional `score` filter (whole number 1-5).
+
+        `summary` always covers **all** of the driver's ratings, whatever the page or `score` filter:
+        average (1 decimal, null if none), count, and a 1-5 breakdown. It is the same number shown as
+        the driver's rating in ride responses and admin views.
+
+        Each review includes the rider's name and the trip (pickup, destination, vehicle type,
+        completedAt). A deleted rider shows as "User"; a missing ride as `null`.
+        Invalid `page`, `limit` (1-100) or `score` → **400**.
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - { name: score, in: query, schema: { type: integer, minimum: 1, maximum: 5 } }
+      responses:
+        "200":
+          description: Received ratings.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Ratings fetched successfully. }
+                  data:
+                    type: object
+                    properties:
+                      summary:
+                        type: object
+                        properties:
+                          average: { type: number, nullable: true, example: 4.8 }
+                          count: { type: integer, example: 12 }
+                          breakdown: { type: object, example: { "1": 0, "2": 0, "3": 1, "4": 2, "5": 9 } }
+                      reviews:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: "#/components/schemas/Rating"
+                            - type: object
+                              properties:
+                                from: { type: object, properties: { name: { type: string, example: Jiya } } }
+                                ride:
+                                  type: object
+                                  nullable: true
+                                  properties:
+                                    pickup: { type: string }
+                                    destination: { type: string }
+                                    vehicleType: { $ref: "#/components/schemas/VehicleType" }
+                                    completedAt: { type: string, format: date-time, nullable: true }
+                      pagination: { $ref: "#/components/schemas/Pagination" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   # ===========================================================================
   # NOTIFICATIONS (planned)
@@ -1342,39 +1894,96 @@ paths:
     get:
       tags: [Notifications]
       operationId: listNotifications
-      x-status: planned
+      x-status: implemented
       x-required-role: any
-      summary: "[PLANNED] List my notifications"
-      description: "**Planned.** **Auth:** Bearer JWT · **Role:** any. Newest first."
+      summary: List my notifications
+      description: |
+        **Auth:** Bearer JWT · **Role:** any. Only the caller's own notifications, newest first.
+
+        `unreadCount` (for the badge) always counts all unread, regardless of filters.
+        `unreadOnly` must be exactly `true` or `false` (anything else → **400**).
+
+        Created automatically by the backend (never by clients):
+        | type | recipient | when |
+        |---|---|---|
+        | RIDE_ACCEPTED, DRIVER_ARRIVED, RIDE_STARTED, RIDE_COMPLETED | passenger | the driver moves the ride on |
+        | DRIVER_APPROACHING | passenger | the assigned driver's live location comes within 500 m of the pickup (the ride moves `DRIVER_ASSIGNED` → `DRIVER_ARRIVING`) |
+        | RIDE_NO_DRIVER | passenger | the search timed out |
+        | PAYMENT_CONFIRMED | passenger | the driver confirmed a cash payment |
+        | RIDE_CANCELLED | driver | the passenger cancelled after the driver accepted |
+        | PAYMENT_RECEIVED | driver | an online payment succeeded |
+        | NEW_RATING | driver | a rider rated the trip |
+        | DRIVER_VERIFIED, DRIVER_REJECTED | driver | an admin reviewed the account |
+        | DRIVER_READY_FOR_REVIEW | every admin | a PENDING driver has a vehicle and all documents |
+
+        `data` holds ids for deep links (`rideId`, `paymentId`, `driverId`). Notifications are
+        deleted automatically after 90 days.
+
+        **No duplicates:** ride lifecycle notifications (the ride rows above) are unique per
+        recipient, ride and type, enforced by a MongoDB unique index, so a retried or racing
+        event never creates a second one.
+
+        **Real time:** every new notification is also pushed over Socket.IO to the recipient's
+        authenticated user room as `notification:new` `{ notification, unreadCount }`; marking
+        read pushes `notification:unread-count` `{ unreadCount }` to all of the user's tabs.
+        See `docs/realtime-events.md`. This endpoint is for the initial load and catching up.
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/Limit"
         - name: unreadOnly
           in: query
-          schema: { type: boolean, default: false }
+          schema: { type: string, enum: ["true", "false"], default: "false" }
       responses:
         "200":
           description: Notifications.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/NotificationListResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/notifications/unread-count:
+    get:
+      tags: [Notifications]
+      operationId: getUnreadNotificationCount
+      x-status: implemented
+      x-required-role: any
+      summary: My unread notification count (badge)
+      description: |
+        **Auth:** Bearer JWT · **Role:** any. Counts only the caller's own unread notifications.
+        Live changes arrive over Socket.IO (`notification:new`, `notification:unread-count`).
+      responses:
+        "200":
+          description: Unread count.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Unread count fetched successfully. }
+                  data: { type: object, properties: { unreadCount: { type: integer, example: 2 } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /api/notifications/read-all:
     patch:
       tags: [Notifications]
       operationId: markAllNotificationsRead
-      x-status: planned
+      x-status: implemented
       x-required-role: any
-      summary: "[PLANNED] Mark all notifications as read"
-      description: "**Planned.** **Auth:** Bearer JWT · **Role:** any."
+      summary: Mark all my notifications as read
+      description: "**Auth:** Bearer JWT · **Role:** any. Only the caller's own; `data.updated` = how many were unread."
       responses:
         "200":
           description: All marked as read.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/MessageResponse" }
-              example: { success: true, message: All notifications marked as read. }
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: All notifications marked as read. }
+                  data: { type: object, properties: { updated: { type: integer, example: 3 } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /api/notifications/{notificationId}/read:
@@ -1383,10 +1992,12 @@ paths:
     patch:
       tags: [Notifications]
       operationId: markNotificationRead
-      x-status: planned
+      x-status: implemented
       x-required-role: any
-      summary: "[PLANNED] Mark a notification as read"
-      description: "**Planned.** **Auth:** Bearer JWT · **Role:** the notification's owner."
+      summary: Mark a notification as read
+      description: |
+        **Auth:** Bearer JWT · **Role:** the notification's owner (anyone else → **404**).
+        Idempotent: marking an already-read notification again keeps its original `readAt`.
       responses:
         "200":
           description: Marked as read.
@@ -1534,65 +2145,46 @@ paths:
   # ===========================================================================
   # ADMIN: management & analytics (planned)
   # ===========================================================================
-  /api/admin/users:
+  /api/admin/drivers:
     get:
       tags: [Admin]
-      operationId: adminListUsers
-      x-status: planned
+      operationId: adminListDrivers
+      x-status: implemented
       x-required-role: ADMIN
-      summary: "[PLANNED] List users"
-      description: "**Planned.** **Auth:** Bearer JWT · **Role:** ADMIN."
+      summary: List all drivers
+      description: |
+        **Auth:** Bearer JWT · **Role:** ADMIN. Used by the admin **Drivers** page.
+
+        Every user with the DRIVER role, newest first, with their profile status, vehicle,
+        completed-trip count and rating (average of riders' ratings; null until rated).
+        Filter by verification `status` (`ALL` = no filter) and `search` (name, email or phone).
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/Limit"
-        - name: role
+        - name: status
           in: query
-          schema: { $ref: "#/components/schemas/Role" }
+          schema: { type: string, enum: [ALL, PENDING, VERIFIED, REJECTED], default: ALL }
         - name: search
           in: query
-          description: Matches name, email or phone.
+          description: Case-insensitive match on name, email or phone.
           schema: { type: string }
       responses:
         "200":
-          description: Users.
+          description: Drivers.
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   success: { type: boolean, example: true }
-                  message: { type: string, example: Users fetched successfully. }
+                  message: { type: string, example: Drivers list fetched successfully. }
                   data:
                     type: object
                     properties:
-                      users: { type: array, items: { $ref: "#/components/schemas/User" } }
+                      drivers:
+                        type: array
+                        items: { $ref: "#/components/schemas/AdminDriverSummary" }
                       pagination: { $ref: "#/components/schemas/Pagination" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /api/admin/drivers:
-    get:
-      tags: [Admin]
-      operationId: adminListDrivers
-      x-status: planned
-      x-required-role: ADMIN
-      summary: "[PLANNED] List drivers"
-      description: "**Planned.** **Auth:** Bearer JWT · **Role:** ADMIN. All drivers with optional filters."
-      parameters:
-        - $ref: "#/components/parameters/Page"
-        - $ref: "#/components/parameters/Limit"
-        - name: verificationStatus
-          in: query
-          schema: { $ref: "#/components/schemas/VerificationStatus" }
-        - name: availabilityStatus
-          in: query
-          schema: { $ref: "#/components/schemas/DriverAvailability" }
-      responses:
-        "200":
-          description: Drivers.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/PendingDriversResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
@@ -1602,10 +2194,14 @@ paths:
     get:
       tags: [Admin]
       operationId: adminGetDriver
-      x-status: planned
+      x-status: implemented
       x-required-role: ADMIN
-      summary: "[PLANNED] Get a driver's full details"
-      description: "**Planned.** **Auth:** Bearer JWT · **Role:** ADMIN. Profile, contact details, vehicle and documents."
+      summary: Get a driver's full details
+      description: |
+        **Auth:** Bearer JWT · **Role:** ADMIN. Used by the admin **driver detail** page.
+
+        `driverId` may be the DriverProfile id or the driver's User id. Returns the profile,
+        contact details, vehicle, documents, rating, and the driver's 100 most recent assigned rides.
       responses:
         "200":
           description: Driver.
@@ -1615,8 +2211,8 @@ paths:
                 type: object
                 properties:
                   success: { type: boolean, example: true }
-                  message: { type: string, example: Driver fetched successfully. }
-                  data: { $ref: "#/components/schemas/PendingDriver" }
+                  message: { type: string, example: Driver details fetched successfully. }
+                  data: { $ref: "#/components/schemas/AdminDriverDetails" }
         "400": { $ref: "#/components/responses/ValidationError" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -1628,10 +2224,9 @@ paths:
     patch:
       tags: [Admin]
       operationId: suspendDriver
-      x-status: planned
       x-required-role: ADMIN
-      summary: "[PLANNED] Suspend a driver"
-      description: "**Planned.** **Auth:** Bearer JWT · **Role:** ADMIN. Blocks the driver from going online. How suspension is stored is not decided yet."
+      summary: "Suspend a driver"
+      description: "**Auth:** Bearer JWT · **Role:** ADMIN. Suspends driver profile, sets availability status to OFFLINE, clears location, and logs an audit entry."
       requestBody:
         required: true
         content:
@@ -1659,10 +2254,9 @@ paths:
     patch:
       tags: [Admin]
       operationId: activateDriver
-      x-status: planned
       x-required-role: ADMIN
-      summary: "[PLANNED] Re-activate a suspended driver"
-      description: "**Planned.** **Auth:** Bearer JWT · **Role:** ADMIN."
+      summary: "Re-activate a suspended driver"
+      description: "**Auth:** Bearer JWT · **Role:** ADMIN. Restores suspended driver profile to VERIFIED status and logs an audit entry."
       responses:
         "200":
           description: Driver activated.
@@ -1677,10 +2271,9 @@ paths:
     get:
       tags: [Admin]
       operationId: adminListRides
-      x-status: planned
       x-required-role: ADMIN
-      summary: "[PLANNED] List all rides"
-      description: "**Planned.** **Auth:** Bearer JWT · **Role:** ADMIN."
+      summary: "List all rides"
+      description: "**Auth:** Bearer JWT · **Role:** ADMIN. Paginated listing of rides across the platform with optional status filter."
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/Limit"
@@ -1700,10 +2293,12 @@ paths:
     get:
       tags: [Admin]
       operationId: adminListActiveRides
-      x-status: planned
       x-required-role: ADMIN
-      summary: "[PLANNED] List rides in progress"
-      description: "**Planned.** **Auth:** Bearer JWT · **Role:** ADMIN. Rides not yet completed or cancelled."
+      summary: "List rides in progress"
+      description: "**Auth:** Bearer JWT · **Role:** ADMIN. Paginated listing of active rides (REQUESTED, ACCEPTED, DRIVER_ARRIVED, IN_PROGRESS)."
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Active rides.
@@ -1717,10 +2312,12 @@ paths:
     get:
       tags: [Admin]
       operationId: adminListPayments
-      x-status: planned
       x-required-role: ADMIN
-      summary: "[PLANNED] List all payments"
-      description: "**Planned.** **Auth:** Bearer JWT · **Role:** ADMIN."
+      summary: "List all payments"
+      description: |
+        **Auth:** Bearer JWT · **Role:** ADMIN. Paginated listing of all platform payments with optional status filter.
+        Each payment carries `baseFare`, `tipAmount` and `tipPaid` next to `amount` (the total charged).
+        Totals include `paidFares` and `paidTips`; the 8% commission is taken on fares only, never on tips.
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/Limit"
@@ -1740,10 +2337,9 @@ paths:
     get:
       tags: [Admin]
       operationId: adminAnalytics
-      x-status: planned
       x-required-role: ADMIN
-      summary: "[PLANNED] Platform analytics"
-      description: "**Planned.** **Auth:** Bearer JWT · **Role:** ADMIN. Aggregate counts and revenue for a date range. Exact metrics are not decided yet."
+      summary: "Platform analytics"
+      description: "**Auth:** Bearer JWT · **Role:** ADMIN. Aggregate counts of rides, drivers, passengers, and total platform revenue for a given date range."
       parameters:
         - name: from
           in: query
@@ -1763,9 +2359,7 @@ paths:
                   message: { type: string, example: Analytics fetched successfully. }
                   data:
                     type: object
-                    description: Shape to be defined when the module is built.
-                    additionalProperties: true
-                    example: { totalRides: 1240, completedRides: 1102, activeDrivers: 86, revenue: { amount: 184520, currency: INR } }
+                    example: { totalRides: 1240, completedRides: 1102, activeDrivers: 86, totalRevenue: 184520, currency: INR }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
@@ -1773,10 +2367,9 @@ paths:
     get:
       tags: [Admin]
       operationId: adminAuditLogs
-      x-status: planned
       x-required-role: ADMIN
-      summary: "[PLANNED] Admin audit log"
-      description: "**Planned.** **Auth:** Bearer JWT · **Role:** ADMIN. Record of admin actions (verifications, rejections, suspensions)."
+      summary: "Admin audit log"
+      description: "**Auth:** Bearer JWT · **Role:** ADMIN. Record of admin actions (verifications, rejections, suspensions, activations)."
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/Limit"
@@ -1967,7 +2560,6 @@ components:
         pages: { type: integer, example: 3 }
     Money:
       type: object
-      x-status: planned
       properties:
         amount: { type: number, example: 89 }
         currency: { type: string, example: INR }
@@ -2004,11 +2596,10 @@ components:
       enum: [SEARCHING, DRIVER_ASSIGNED, DRIVER_ARRIVING, DRIVER_ARRIVED, RIDE_STARTED, RIDE_COMPLETED, CANCELLED]
     PaymentMethod:
       type: string
-      x-status: planned
       enum: [CASH, UPI, CARD]
     PaymentStatus:
       type: string
-      x-status: planned
+      description: REFUNDED is reserved for refunds (not implemented yet).
       enum: [PENDING, COMPLETED, FAILED, REFUNDED]
 
     # ------------------------------------------------------------ auth (implemented)
@@ -2211,6 +2802,50 @@ components:
         success: { type: boolean, example: true }
         message: { type: string, example: Driver verified successfully. }
         data: { $ref: "#/components/schemas/AdminDriverProfile" }
+    AdminDriverSummary:
+      type: object
+      properties:
+        id: { $ref: "#/components/schemas/ObjectId" }
+        driverProfileId: { $ref: "#/components/schemas/ObjectId" }
+        userId: { $ref: "#/components/schemas/ObjectId" }
+        name: { type: string, example: Bikki Singh }
+        email: { type: string, example: driver@example.com }
+        phone: { type: string, nullable: true }
+        licenseNumber: { type: string, example: GH780287393H3903U3HM }
+        verificationStatus: { $ref: "#/components/schemas/VerificationStatus" }
+        availabilityStatus: { $ref: "#/components/schemas/DriverAvailability" }
+        rating: { type: number, nullable: true, example: 4.8, description: Average of riders' ratings; null until rated. }
+        ratingCount: { type: integer, example: 12 }
+        totalTrips: { type: integer, example: 37, description: Completed rides. }
+        gender: { type: string, nullable: true }
+        dateOfBirth: { type: string, format: date-time, nullable: true }
+        profileImage: { type: string, nullable: true }
+        vehicle:
+          type: object
+          nullable: true
+          properties:
+            vehicleType: { $ref: "#/components/schemas/VehicleType" }
+            make: { type: string, example: Tata }
+            model: { type: string, example: Shine }
+            registrationNumber: { type: string, example: HIE83B2H2P22 }
+            color: { type: string, example: Red }
+            year: { type: integer, example: 2022 }
+            vehicleImage: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+    AdminDriverDetails:
+      allOf:
+        - $ref: "#/components/schemas/AdminDriverSummary"
+        - type: object
+          properties:
+            verifiedAt: { type: string, format: date-time, nullable: true }
+            rejectionReason: { type: string, nullable: true }
+            documents: { type: array, items: { type: object, additionalProperties: true } }
+            totalAllRides: { type: integer, example: 41, description: All assigned rides (any status, up to 100). }
+            rides:
+              type: array
+              description: Up to 100 most recent rides assigned to this driver, newest first.
+              items: { type: object, additionalProperties: true }
+            updatedAt: { type: string, format: date-time }
     PendingDriver:
       allOf:
         - $ref: "#/components/schemas/AdminDriverProfile"
@@ -2453,7 +3088,8 @@ components:
       properties:
         name: { type: string, example: Ravi Kumar }
         profileImage: { type: string, format: uri, nullable: true }
-        rating: { type: number, nullable: true, description: Ratings are not implemented yet (always null)., example: null }
+        rating: { type: number, nullable: true, description: "Average of passengers' ratings (1 decimal); null until rated.", example: 4.8 }
+        ratingCount: { type: integer, example: 12 }
         vehicle:
           type: object
           nullable: true
@@ -2477,6 +3113,44 @@ components:
         currency: { type: string, example: INR }
         routeSource: { type: string, enum: [OSRM, ESTIMATED] }
         assignedAt: { type: string, format: date-time, nullable: true }
+        arrivedAt: { type: string, format: date-time, nullable: true }
+        startedAt: { type: string, format: date-time, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
+        finalFare: { type: number, nullable: true, example: 58, description: Set on completion (= estimatedFare). }
+        tipAmount:
+          type: integer
+          enum: [0, 20, 40, 50, 60]
+          example: 40
+          description: Tip the passenger offered (PATCH /rides/{rideId}/tip). Shown to drivers in offers; the payment's default tip.
+        myRating:
+          type: integer
+          nullable: true
+          description: Only on RIDE_COMPLETED rides, only for the PASSENGER. The score they gave; null = not rated yet.
+          example: 5
+        payment:
+          type: object
+          nullable: true
+          description: Only on RIDE_COMPLETED rides. The open (PENDING/COMPLETED) payment, or null if unpaid.
+          properties:
+            id: { $ref: "#/components/schemas/ObjectId" }
+            status: { $ref: "#/components/schemas/PaymentStatus" }
+            method: { $ref: "#/components/schemas/PaymentMethod" }
+            amount: { type: number, example: 98, description: Final total (fare + tip + ...). }
+            tipAmount: { type: integer, enum: [0, 20, 40, 50, 60], example: 40 }
+            tipPaid: { type: boolean, example: true }
+            breakdown:
+              type: object
+              properties:
+                baseFare: { type: number, example: 58 }
+                tip: { type: number, example: 40 }
+                taxes: { type: number, example: 0 }
+                additionalCharges: { type: number, example: 0 }
+                discount: { type: number, example: 0 }
+                total: { type: number, example: 98 }
+        startOtp:
+          type: string
+          example: "4821"
+          description: Only for the PASSENGER, from DRIVER_ASSIGNED until the ride starts. Read it out to the driver.
         cancelledAt: { type: string, format: date-time, nullable: true }
         cancelledBy: { type: string, enum: [PASSENGER, DRIVER, SYSTEM], nullable: true }
         cancellationReason: { type: string, nullable: true }
@@ -2534,7 +3208,6 @@ components:
           items: { $ref: "#/components/schemas/RideOffer" }
     RideListResponse:
       type: object
-      x-status: planned
       properties:
         success: { type: boolean, example: true }
         message: { type: string, example: Rides fetched successfully. }
@@ -2555,19 +3228,21 @@ components:
     # ===================================================================
     AssignedDriverResponse:
       type: object
-      x-status: planned
       properties:
         success: { type: boolean, example: true }
         message: { type: string, example: Driver fetched successfully. }
         data:
           type: object
-          description: Public driver details only; no documents or licence number.
+          description: Public driver details only. No phone, licence number or documents.
           properties:
+            rideId: { $ref: "#/components/schemas/ObjectId" }
+            rideStatus: { $ref: "#/components/schemas/RideStatus" }
             name: { type: string, example: Ravi Kumar }
-            profileImage: { type: string, format: uri }
-            phone: { $ref: "#/components/schemas/Phone" }
+            profileImage: { type: string, format: uri, nullable: true }
+            rating: { type: number, nullable: true, example: null }
             vehicle:
               type: object
+              nullable: true
               properties:
                 vehicleType: { $ref: "#/components/schemas/VehicleType" }
                 make: { type: string, example: Honda }
@@ -2576,33 +3251,86 @@ components:
                 registrationNumber: { type: string, example: BR01AB1234 }
             location:
               type: object
-              allOf: [{ $ref: "#/components/schemas/DriverLocation" }]
               nullable: true
-            averageRating: { type: number, nullable: true, example: 4.8 }
+              description: Only while the ride is active (DRIVER_ASSIGNED → RIDE_STARTED); null otherwise.
+              properties:
+                latitude: { type: number, example: 25.6127 }
+                longitude: { type: number, example: 85.1589 }
+                lastLocationUpdatedAt: { type: string, format: date-time, nullable: true }
+                isLocationStale: { type: boolean, example: false }
+                heading: { type: string, enum: [PICKUP, DESTINATION], description: "PICKUP before the ride starts, DESTINATION during it." }
+                distanceKm: { type: number, example: 1.4, description: Estimated road distance to where the driver is heading. }
+                etaMinutes: { type: integer, example: 4, description: Rough estimate (city average speed). }
     Payment:
-      x-status: planned
-      allOf:
-        - type: object
+      type: object
+      properties:
+        id: { $ref: "#/components/schemas/ObjectId" }
+        rideId: { $ref: "#/components/schemas/ObjectId" }
+        amount:
+          type: number
+          example: 111
+          description: Final total charged and recorded (= breakdown.total).
+        tipAmount: { type: integer, enum: [0, 20, 40, 50, 60], example: 40, description: Driver tip (₹), kept apart from the fare. }
+        tipPaid: { type: boolean, example: true, description: True only when a tip was given and the payment is COMPLETED. }
+        breakdown:
+          type: object
+          description: "Final Amount = baseFare + tip + taxes + additionalCharges - discount. Clients may hide zero lines."
           properties:
-            id: { $ref: "#/components/schemas/ObjectId" }
-            rideId: { $ref: "#/components/schemas/ObjectId" }
-            passengerId: { $ref: "#/components/schemas/ObjectId" }
-            driverId: { $ref: "#/components/schemas/ObjectId" }
-            amount: { $ref: "#/components/schemas/Money" }
-            method: { $ref: "#/components/schemas/PaymentMethod" }
-            status: { $ref: "#/components/schemas/PaymentStatus" }
-            paidAt: { type: string, format: date-time, nullable: true }
-        - $ref: "#/components/schemas/Timestamps"
+            baseFare: { type: number, example: 71 }
+            tip: { type: number, example: 40 }
+            taxes: { type: number, example: 0 }
+            additionalCharges: { type: number, example: 0 }
+            discount: { type: number, example: 0 }
+            total: { type: number, example: 111 }
+        currency: { type: string, example: INR }
+        method: { $ref: "#/components/schemas/PaymentMethod" }
+        status: { $ref: "#/components/schemas/PaymentStatus" }
+        provider: { type: string, enum: [CASH, MOCK, RAZORPAY], description: "CASH, or the gateway that charged it." }
+        providerPaymentId: { type: string, nullable: true, example: mock_pay_3f0c2a9e }
+        failureReason: { type: string, nullable: true }
+        paidAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        ride:
+          type: object
+          nullable: true
+          properties:
+            pickup: { type: string, example: Boring Road, Patna }
+            destination: { type: string, example: Patna Junction }
+            vehicleType: { $ref: "#/components/schemas/VehicleType" }
+            distanceKm: { type: number, example: 4.7 }
+            completedAt: { type: string, format: date-time, nullable: true }
+        passenger:
+          type: object
+          description: Only for DRIVER and ADMIN viewers.
+          properties:
+            name: { type: string, example: Jiya }
+        driver:
+          type: object
+          description: Only for the PASSENGER viewer.
+          properties:
+            name: { type: string, example: Sunena Singh }
+        myRating:
+          type: object
+          nullable: true
+          description: Only for the PASSENGER viewer. Their rating of this ride's driver, or null if not rated yet.
+          properties:
+            score: { type: integer, minimum: 1, maximum: 5, example: 4 }
+            comment: { type: string, nullable: true, example: Smooth ride }
+        canRate:
+          type: boolean
+          description: |
+            Only for the PASSENGER viewer. True when the payment is COMPLETED and the passenger hasn't
+            rated the driver yet; clients show the rating prompt (POST /api/rides/{rideId}/rating).
+          example: true
     PaymentResponse:
       type: object
-      x-status: planned
       properties:
         success: { type: boolean, example: true }
-        message: { type: string, example: Payment fetched successfully. }
+        message: { type: string, example: Payment successful. }
         data: { $ref: "#/components/schemas/Payment" }
     PaymentListResponse:
       type: object
-      x-status: planned
       properties:
         success: { type: boolean, example: true }
         message: { type: string, example: Payments fetched successfully. }
@@ -2612,56 +3340,75 @@ components:
             payments:
               type: array
               items: { $ref: "#/components/schemas/Payment" }
+            summary:
+              type: object
+              properties:
+                currency: { type: string, example: INR }
+                paidAmount: { type: number, example: 253, description: Total of COMPLETED payments (fares + tips). }
+                paidCount: { type: integer, example: 3 }
+                paidFares: { type: number, example: 213, description: Fare part of paidAmount (tips excluded). }
+                paidTips: { type: number, example: 40, description: Tip part of paidAmount (all to the driver). }
+                pendingAmount: { type: number, example: 71 }
+                pendingCount: { type: integer, example: 1 }
             pagination: { $ref: "#/components/schemas/Pagination" }
     RatingInput:
       type: object
-      x-status: planned
       required: [score]
       properties:
         score: { type: integer, minimum: 1, maximum: 5, example: 5 }
         comment: { type: string, maxLength: 500, example: Smooth ride and polite driver. }
     Rating:
-      x-status: planned
-      allOf:
-        - type: object
-          properties:
-            id: { $ref: "#/components/schemas/ObjectId" }
-            rideId: { $ref: "#/components/schemas/ObjectId" }
-            fromRole: { type: string, enum: [PASSENGER, DRIVER] }
-            score: { type: integer, minimum: 1, maximum: 5, example: 5 }
-            comment: { type: string, example: Smooth ride and polite driver. }
-        - $ref: "#/components/schemas/Timestamps"
+      type: object
+      properties:
+        id: { $ref: "#/components/schemas/ObjectId" }
+        rideId: { $ref: "#/components/schemas/ObjectId" }
+        fromRole: { type: string, enum: [PASSENGER, DRIVER], description: "Who gave it: PASSENGER rated the driver, DRIVER rated the passenger." }
+        score: { type: integer, minimum: 1, maximum: 5, example: 5 }
+        comment: { type: string, nullable: true, example: Smooth ride and polite driver. }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     RatingResponse:
       type: object
-      x-status: planned
       properties:
         success: { type: boolean, example: true }
         message: { type: string, example: Rating submitted successfully. }
         data: { $ref: "#/components/schemas/Rating" }
     Notification:
       type: object
-      x-status: planned
       properties:
         id: { $ref: "#/components/schemas/ObjectId" }
-        type: { type: string, description: "e.g. RIDE_ACCEPTED, DRIVER_VERIFIED.", example: DRIVER_VERIFIED }
-        title: { type: string, example: You're verified! }
-        body: { type: string, example: Your documents were approved. You can now go online. }
+        recipientId: { $ref: "#/components/schemas/ObjectId" }
+        rideId:
+          type: string
+          nullable: true
+          pattern: "^[a-f0-9]{24}$"
+          description: The ride this is about; null for account notifications (e.g. DRIVER_VERIFIED).
+        type:
+          type: string
+          enum:
+            [RIDE_ACCEPTED, DRIVER_APPROACHING, DRIVER_ARRIVED, RIDE_STARTED, RIDE_COMPLETED, RIDE_NO_DRIVER,
+             PAYMENT_CONFIRMED, RIDE_CANCELLED, PAYMENT_RECEIVED, NEW_RATING, DRIVER_VERIFIED, DRIVER_REJECTED,
+             DRIVER_READY_FOR_REVIEW]
+          example: RIDE_ACCEPTED
+        title: { type: string, example: Driver on the way }
+        message: { type: string, example: Bikki accepted your ride and is heading to your pickup. }
+        body: { type: string, description: Same as `message` (kept for existing clients)., example: Bikki accepted your ride and is heading to your pickup. }
         data:
           type: object
-          additionalProperties: true
-          description: Optional ids for deep links, e.g. rideId.
+          additionalProperties: { type: string }
+          description: Ids for deep links, e.g. rideId, paymentId, driverId.
+          example: { rideId: 6ac9eb0f484c3993652b5b04 }
         isRead: { type: boolean, example: false }
+        readAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
     NotificationResponse:
       type: object
-      x-status: planned
       properties:
         success: { type: boolean, example: true }
         message: { type: string, example: Notification marked as read. }
         data: { $ref: "#/components/schemas/Notification" }
     NotificationListResponse:
       type: object
-      x-status: planned
       properties:
         success: { type: boolean, example: true }
         message: { type: string, example: Notifications fetched successfully. }
@@ -2671,11 +3418,10 @@ components:
             notifications:
               type: array
               items: { $ref: "#/components/schemas/Notification" }
-            unreadCount: { type: integer, example: 3 }
+            unreadCount: { type: integer, example: 2 }
             pagination: { $ref: "#/components/schemas/Pagination" }
     AuditLog:
       type: object
-      x-status: planned
       properties:
         id: { $ref: "#/components/schemas/ObjectId" }
         adminId: { $ref: "#/components/schemas/ObjectId" }
@@ -2684,3 +3430,123 @@ components:
         targetId: { $ref: "#/components/schemas/ObjectId" }
         details: { type: object, additionalProperties: true }
         createdAt: { type: string, format: date-time }
+
+    # ------------------------------------------------------ ride communication
+    RideMessage:
+      type: object
+      description: Plain text. Clients must render `body` as text, never as HTML.
+      properties:
+        id: { $ref: "#/components/schemas/ObjectId" }
+        rideId: { $ref: "#/components/schemas/ObjectId" }
+        senderId: { $ref: "#/components/schemas/ObjectId" }
+        senderRole: { type: string, enum: [PASSENGER, DRIVER] }
+        body: { type: string, minLength: 1, maxLength: 1000, example: "I'm at the main gate" }
+        clientMessageId:
+          type: string
+          nullable: true
+          description: Client-generated id sent with `chat:send`; a resend with the same id returns the same message.
+          example: m-1739-a1
+        createdAt: { type: string, format: date-time }
+    RideMessageListResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Messages fetched successfully. }
+        data:
+          type: object
+          properties:
+            messages:
+              type: array
+              items: { $ref: "#/components/schemas/RideMessage" }
+            hasMore: { type: boolean, example: true }
+            nextCursor:
+              type: string
+              nullable: true
+              pattern: "^[a-f0-9]{24}$"
+              description: Pass as `before` to load the previous (older) page. Null when there are no older messages.
+    CallView:
+      type: object
+      description: |
+        An in-app call. `RINGING` → `CONNECTING` (answered, WebRTC handshake running) → `ACTIVE`
+        (a browser reported its peer connection is connected, so audio is flowing).
+      properties:
+        callId: { type: string, format: uuid }
+        rideId: { $ref: "#/components/schemas/ObjectId" }
+        state: { type: string, enum: [RINGING, CONNECTING, ACTIVE] }
+        direction: { type: string, enum: [OUTGOING, INCOMING], description: Relative to whoever is asking. }
+        caller:
+          type: object
+          properties:
+            role: { type: string, enum: [PASSENGER, DRIVER] }
+            name: { type: string, example: Ravi Kumar }
+        callee:
+          type: object
+          properties:
+            role: { type: string, enum: [PASSENGER, DRIVER] }
+            name: { type: string, example: Asha Singh }
+        createdAt: { type: string, format: date-time }
+        connectedAt: { type: string, format: date-time, nullable: true }
+    IceServer:
+      type: object
+      description: An RTCIceServer, passed as-is to `new RTCPeerConnection({ iceServers })`.
+      properties:
+        urls:
+          oneOf:
+            - { type: string, example: "stun:stun.l.google.com:19302" }
+            - { type: array, items: { type: string } }
+        username: { type: string }
+        credential: { type: string }
+    CommunicationStatusResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: Communication status fetched successfully. }
+        data:
+          type: object
+          properties:
+            rideId: { $ref: "#/components/schemas/ObjectId" }
+            rideStatus: { $ref: "#/components/schemas/RideStatus" }
+            canChat: { type: boolean, example: true }
+            canCall: { type: boolean, example: true }
+            closedReason:
+              type: string
+              nullable: true
+              enum: [WAITING_FOR_DRIVER, RIDE_COMPLETED, RIDE_CANCELLED]
+              description: Why chat/calls are closed; null while open.
+              example: null
+            you:
+              type: object
+              properties:
+                role: { type: string, enum: [PASSENGER, DRIVER] }
+            counterpart:
+              type: object
+              nullable: true
+              description: The other participant. Null while no driver is assigned.
+              properties:
+                role: { type: string, enum: [PASSENGER, DRIVER] }
+                name: { type: string, example: Ravi Kumar }
+                phone:
+                  type: string
+                  nullable: true
+                  example: "+919876543210"
+                  description: |
+                    E.164 phone number so the two can call each other. Only revealed to the ride's
+                    passenger and current driver **while the ride is active**; null after it ends,
+                    or if the user hasn't added a phone number.
+                online: { type: boolean, description: Has at least one connected socket, so can receive a call. }
+            activeCall:
+              type: object
+              nullable: true
+              description: The ride's ongoing call (a CallView), or null.
+              allOf: [{ $ref: "#/components/schemas/CallView" }]
+            limits:
+              type: object
+              properties:
+                maxMessageLength: { type: integer, example: 1000 }
+            rtc:
+              type: object
+              properties:
+                iceServers:
+                  type: array
+                  items: { $ref: "#/components/schemas/IceServer" }
+                ringTimeoutSeconds: { type: integer, example: 30 }

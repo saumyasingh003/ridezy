@@ -3,7 +3,7 @@
 export const GENDERS = ["MALE", "FEMALE", "OTHER", "PREFER_NOT_TO_SAY"] as const;
 export type Gender = (typeof GENDERS)[number];
 
-export const VERIFICATION_STATUSES = ["PENDING", "VERIFIED", "REJECTED"] as const;
+export const VERIFICATION_STATUSES = ["PENDING", "VERIFIED", "REJECTED", "SUSPENDED"] as const;
 export type VerificationStatus = (typeof VERIFICATION_STATUSES)[number];
 
 /**
