@@ -26,8 +26,8 @@ import {
 import DriverRideRequests from "@/components/driver/DriverRideRequests";
 import PendingCashPayments from "@/components/driver/PendingCashPayments";
 import { api, type ReceivedRatings, type PaymentHistory } from "@/lib/rideApi";
+import { API_BASE } from "@/lib/config";
 
-const API_BASE = "http://localhost:5000/api";
 
 interface ToastItem {
   id: string;

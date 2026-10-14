@@ -8,6 +8,9 @@ const mongod = await MongoMemoryServer.create();
 
 process.env.NODE_ENV = "test";
 process.env.PAYMENT_PROVIDER = "mock"; // tests never call real Razorpay
+// ...nor real Supabase Storage (empty = unset; images go to the local folder).
+process.env.SUPABASE_URL = "";
+process.env.SUPABASE_SERVICE_ROLE_KEY = "";
 process.env.MONGODB_URI = mongod.getUri("ridezy-profile-test");
 process.env.JWT_SECRET = "test-jwt-secret-that-is-at-least-32-characters";
 process.env.OTP_SECRET = "test-otp-secret-that-is-at-least-32-characters";

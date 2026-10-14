@@ -1,6 +1,9 @@
 import express, { type Express } from "express";
 import cors from "cors";
-import helmet from "helmet";
+// Namespace import: helmet ships separate ESM and CommonJS type files, and
+// some builders (e.g. Vercel) resolve the CommonJS ones, where a default
+// import is not callable. `.default` is the middleware in both.
+import * as helmetModule from "helmet";
 import morgan from "morgan";
 import path from "node:path";
 import fs from "node:fs";
@@ -11,9 +14,15 @@ import { razorpayWebhook } from "./controllers/payment.controller.js";
 import { AppError } from "./utils/AppError.js";
 import { PRIVATE_FILE_PREFIX, signPrivateFileUrls } from "./utils/imageStorage.js";
 
+const helmet = helmetModule.default;
+
+// Local image fallback (when Supabase isn't configured). Serverless hosts have a
+// read-only file system, so failing to create the folder must not crash startup.
 const uploadsDir = path.resolve(process.cwd(), "uploads");
-if (!fs.existsSync(uploadsDir)) {
+try {
   fs.mkdirSync(uploadsDir, { recursive: true });
+} catch {
+  // read-only file system: images must go to Supabase Storage there
 }
 
 export function createApp(): Express {

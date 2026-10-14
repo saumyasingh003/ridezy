@@ -22,8 +22,8 @@ import {
   X,
   CreditCard,
 } from "lucide-react";
+import { API_BASE } from "@/lib/config";
 
-const API_BASE = "http://localhost:5000/api";
 
 interface ToastItem {
   id: string;

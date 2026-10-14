@@ -26,8 +26,8 @@ import { SIM_SPEEDS, useDriveSimulation } from "@/lib/driveSimulator";
 import type { LatLng } from "@/lib/mapGeo";
 import { useTripRoutes } from "@/lib/useTripRoutes";
 import { api, directionsUrl, formatDuration, formatKm, type RideStatus, type RideView } from "@/lib/rideApi";
+import { API_BASE } from "@/lib/config";
 
-const API_BASE = "http://localhost:5000/api";
 // Backend marks a location stale after 60s (LOCATION_STALE_AFTER_SECONDS), so
 // push well inside that window while online.
 const LOCATION_PUSH_MS = 20_000;

@@ -4,8 +4,8 @@ import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {ArrowLeft,Mail,Phone,Calendar,CalendarDays,FileBadge,Car,CheckCircle2,Clock,AlertTriangle,ShieldCheck,Check,X,User,Star,ExternalLink,Shield,FileText,RotateCcw,Trash2,Pencil,Sparkles,BadgeCheck,Route,MapPin,Navigation,IndianRupee,ChevronDown,Camera,Link2,Eye,Upload,Copy,CheckCheck,FileCheck,} from "lucide-react";
+import { API_BASE } from "@/lib/config";
 
-const API_BASE = "http://localhost:5000/api";
 
 export interface DriverDetailsRide {
   id: string;

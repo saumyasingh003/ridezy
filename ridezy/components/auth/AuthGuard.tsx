@@ -3,13 +3,13 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ShieldCheck, Lock, Mail, ArrowRight, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { API_BASE } from "@/lib/config";
 
 interface AuthGuardProps {
   children: React.ReactNode;
   allowedRole?: "PASSENGER" | "DRIVER" | "ADMIN";
 }
 
-const API_BASE = "http://localhost:5000/api";
 
 export default function AuthGuard({ children, allowedRole }: AuthGuardProps) {
   const router = useRouter();

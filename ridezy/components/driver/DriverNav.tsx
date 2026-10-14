@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { ChevronDown, LogOut, User as UserIcon } from "lucide-react";
 import NotificationBell from "@/components/notifications/NotificationBell";
+import { API_BASE } from "@/lib/config";
 
 export default function DriverNav() {
   const router = useRouter();
@@ -24,7 +25,6 @@ export default function DriverNav() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const API_BASE = "http://localhost:5000/api";
 
   useEffect(() => {
     // 1. Initial read from localStorage

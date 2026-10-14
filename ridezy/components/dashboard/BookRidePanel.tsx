@@ -27,6 +27,7 @@ import { type SavedPlaceItem } from "./data";
 import { CURRENT_RIDE_HREF } from "./currentRide";
 import type { Place } from "@/lib/rideApi";
 import { getCurrentPosition, isInServiceArea, reverseGeocode, searchPlaces, SERVICE_AREA } from "@/lib/geocode";
+import { API_BASE } from "@/lib/config";
 
 function getPlaceIconComponent(place: SavedPlaceItem) {
   const norm = `${place.type || ""} ${place.label || ""}`.toLowerCase();
@@ -278,7 +279,7 @@ export default function BookRidePanel({
     // 2. Fetch fresh saved places from backend API
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     if (token) {
-      fetch("http://localhost:5000/api/passengers/profile", {
+      fetch(`${API_BASE}/passengers/profile`, {
         headers: { Authorization: `Bearer ${token}` },
       })
         .then((res) => {

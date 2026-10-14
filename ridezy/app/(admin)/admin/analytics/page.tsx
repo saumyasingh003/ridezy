@@ -17,8 +17,8 @@ import {
   Percent,
 } from "lucide-react";
 import CustomDateRangePicker from "@/components/admin/CustomDateRangePicker";
+import { API_BASE } from "@/lib/config";
 
-const API_BASE = "http://localhost:5000/api";
 
 interface AnalyticsData {
   totalRides: number;
