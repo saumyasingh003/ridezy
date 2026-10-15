@@ -260,25 +260,16 @@ The backend is a long-running server rather than serverless functions, because S
 
 ```bash
 cd backend
-cp .env.example .env    # set MONGODB_URI, JWT_SECRET and OTP_SECRET at minimum
 npm install
 npm run dev             # http://localhost:5000
 ```
 
-Generate each secret with:
-
-```bash
-node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
-```
-
-In development, if no email settings are filled in, emails go to a throwaway Ethereal inbox and a preview link for each one is printed in the server log. Use that link to read your verification code.
+In development, verification emails go to a throwaway Ethereal inbox and a preview link for each one is printed in the server log. Use that link to read your verification code.
 
 Create the admin account (there is no public endpoint for this):
 
 ```bash
-# set ADMIN_NAME, ADMIN_EMAIL and ADMIN_PASSWORD in .env, then:
 npm run create-admin
-# then remove ADMIN_PASSWORD from .env
 ```
 
 ### 2. Frontend
@@ -289,7 +280,7 @@ npm install
 npm run dev             # http://localhost:3000
 ```
 
-The frontend uses `http://localhost:5000/api` by default. To point it elsewhere, set `NEXT_PUBLIC_API_URL` in `ridezy/.env.local` (see [`ridezy/.env.example`](ridezy/.env.example)).
+The frontend talks to the local backend at `http://localhost:5000/api` by default.
 
 ### 3. Try a full ride
 
@@ -299,35 +290,6 @@ The frontend uses `http://localhost:5000/api` by default. To point it elsewhere,
 4. The driver accepts, then uses the **drive simulator** to reach the pickup and taps **I Have Arrived**.
 5. The passenger reads out the 4-digit ride OTP, the driver starts the trip, simulates the drive and completes it.
 6. The passenger pays and rates the driver. The admin sees the ride, payment and rating.
-
----
-
-## ⚙️ Environment Variables
-
-### Backend (`backend/.env`)
-
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `MONGODB_URI` | ✅ | MongoDB Atlas connection string, including the database name |
-| `JWT_SECRET` | ✅ | Signs login tokens |
-| `OTP_SECRET` | ✅ | HMAC key for email OTPs (must differ from `JWT_SECRET`) |
-| `CORS_ORIGIN` | | Allowed frontend origins (default `http://localhost:3000`) |
-| `APP_URL` | | Frontend URL used in email links |
-| `BREVO_API_KEY`, `EMAIL_FROM` | Production | Email over HTTPS (Brevo) |
-| `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USER`, `EMAIL_PASSWORD` | | SMTP alternative to Brevo |
-| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_PUBLIC_BUCKET`, `SUPABASE_PRIVATE_BUCKET` | | Image and document storage (falls back to local `uploads/`) |
-| `PAYMENT_PROVIDER`, `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | | Online payments (`mock` in development) |
-| `ROUTING_PROVIDER`, `OSRM_BASE_URL` | | `osrm` road routes or `haversine` straight-line estimate |
-| `MATCH_ALL_DRIVERS` | | `true` ignores distance and location age when matching (handy for testing). The vehicle type is always enforced. |
-| `WEBRTC_ICE_SERVERS` | | STUN/TURN servers for calls |
-
-The full list, with defaults, is in [`backend/.env.example`](backend/.env.example).
-
-### Frontend (`ridezy/.env.local`)
-
-| Variable | Purpose |
-| --- | --- |
-| `NEXT_PUBLIC_API_URL` | Backend API base URL, e.g. `https://your-backend.onrender.com/api` |
 
 ---
 
@@ -348,8 +310,8 @@ The tests cover auth (OTP hashing, expiry, attempt limits, single use, no code i
 
 ## ☁️ Deployment
 
-- **Backend → Render.** [`render.yaml`](render.yaml) is a Render Blueprint (Node web service, health check at `/api/health`, WebSockets supported). In Render choose **New → Blueprint**, select this repo and fill in the secrets it asks for. Step-by-step notes are in [`backend/README.md`](backend/README.md#deploy-render).
-- **Frontend → Vercel.** Import the repo, set the root directory to `ridezy` and set `NEXT_PUBLIC_API_URL` to your Render URL followed by `/api`.
+- **Backend → Render.** [`render.yaml`](render.yaml) is a Render Blueprint (Node web service, health check at `/api/health`, WebSockets supported). In Render choose **New → Blueprint**, and select this repo. Step-by-step notes are in [`backend/README.md`](backend/README.md#deploy-render).
+- **Frontend → Vercel.** Import the repo, set the root directory to `ridezy` and point it at the deployed backend.
 
 ---
 
