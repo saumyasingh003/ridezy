@@ -365,7 +365,7 @@ export default function AboutPage() {
           </ol>
 
           {/* Meet the developer */}
-          <div className="relative mt-16 overflow-hidden rounded-3xl border border-[#EDEDE8] bg-white p-6 shadow-[0_20px_40px_-24px_rgba(33,77,42,0.25)] sm:p-10">
+          <div id="developer" className="relative mt-16 scroll-mt-28 overflow-hidden rounded-3xl border border-[#EDEDE8] bg-white p-6 shadow-[0_20px_40px_-24px_rgba(33,77,42,0.25)] sm:p-10">
             <div className="pointer-events-none absolute -left-24 -bottom-24 h-64 w-64 rounded-full bg-[#E5E9CA]/50 blur-3xl" />
 
             <div className="relative grid gap-8 lg:grid-cols-[auto_1fr] lg:gap-12">

@@ -1,10 +1,18 @@
 import Link from "next/link";
-import { ArrowRight, LayoutDashboard } from "lucide-react";
+import { ArrowRight, ArrowUpRight, LayoutDashboard } from "lucide-react";
+
+// Links without a page yet fall back to "#".
+const LINK_HREFS: Record<string, string> = {
+  "About Us": "/about",
+  "About the Developer": "/about#developer",
+};
+
+const PORTFOLIO_URL = "https://saumya-singhs-portfolio.vercel.app/";
 
 const linkGroups = [
   {
     title: "Company",
-    links: ["About Us", "Careers", "Blog", "Press"],
+    links: ["About Us", "About the Developer", "Careers", "Blog", "Press"],
   },
   {
     title: "Support",
@@ -150,7 +158,7 @@ export default function Footer() {
                 {group.links.map((link) => (
                   <li key={link}>
                     <a
-                      href="#"
+                      href={LINK_HREFS[link] ?? "#"}
                       className="
                         relative
                         text-sm
@@ -215,6 +223,18 @@ export default function Footer() {
             </div>
             <p className="mt-4 text-sm text-[#686863] lg:text-right">
               © {new Date().getFullYear()} Ridezy. All rights reserved.
+            </p>
+            <p className="mt-1.5 text-sm text-[#686863] lg:text-right">
+              Designed &amp; built by{" "}
+              <a
+                href={PORTFOLIO_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group inline-flex items-center gap-0.5 font-semibold text-[#214D2A] underline-offset-4 hover:underline"
+              >
+                Saumya Singh
+                <ArrowUpRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+              </a>
             </p>
           </div>
         </div>
