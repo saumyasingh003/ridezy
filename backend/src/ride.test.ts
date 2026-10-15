@@ -809,26 +809,45 @@ describe("MATCH_ALL_DRIVERS mode", () => {
     rides.matchAllDrivers = false;
   });
 
-  it("offers a ride to every eligible online driver: any vehicle, any distance, any location age", async () => {
+  it("offers a ride to every eligible online driver of the booked type: any distance, any location age", async () => {
     const p = await makeUser("PASSENGER");
-    const cab = await makeDriver({ vehicleType: "CAB", kmNorth: 1 });
-    const far = await makeDriver({ vehicleType: "AUTO", kmNorth: 30 });
+    const near = await makeDriver({ vehicleType: "BIKE", kmNorth: 1 });
+    const far = await makeDriver({ vehicleType: "BIKE", kmNorth: 30 });
     const stale = await makeDriver({ vehicleType: "BIKE", kmNorth: 2 });
     await DriverProfile.updateOne({ _id: stale.profileId }, { lastLocationUpdatedAt: new Date(Date.now() - 3_600_000) });
+    const cab = await makeDriver({ vehicleType: "CAB", kmNorth: 1 });
+    const auto = await makeDriver({ vehicleType: "AUTO", kmNorth: 1 });
     const unverifiedDocs = await makeDriver({ vehicleType: "BIKE", documentStatus: "PENDING" });
     await makeDriver({ vehicleType: "BIKE", availabilityStatus: "OFFLINE" });
 
     const { rideId } = await book(p.token); // a BIKE ride
     const offered = (await Ride.findById(rideId))!.offeredDriverIds.map(String).sort();
-    assert.deepEqual(offered, [cab.profileId, far.profileId, stale.profileId].sort());
+    assert.deepEqual(offered, [near.profileId, far.profileId, stale.profileId].sort());
     assert.equal(offered.includes(unverifiedDocs.profileId), false); // safety rules still apply
 
-    // A CAB driver can accept a BIKE ride in this mode.
-    const accept = await api("POST", `/api/rides/${rideId}/accept`, cab.token);
-    assert.equal(accept.status, 200);
+    // Other vehicle types never see the ride, and can't accept it either.
+    for (const other of [cab, auto]) {
+      const requests = await api("GET", "/api/drivers/rides/requests", other.token);
+      assert.equal(requests.body.data!.length, 0);
+      assert.equal((await api("POST", `/api/rides/${rideId}/accept`, other.token)).status, 404);
+    }
+    assert.equal((await api("GET", "/api/drivers/rides/requests", far.token)).body.data!.length, 1);
+    assert.equal((await api("POST", `/api/rides/${rideId}/accept`, far.token)).status, 200);
   });
 
-  it("reports every online driver as available for every vehicle type", async () => {
+  it("hides an offer when the driver's vehicle no longer matches, and refuses the accept", async () => {
+    const p = await makeUser("PASSENGER");
+    const d = await makeDriver({ vehicleType: "BIKE" });
+    const { rideId } = await book(p.token); // a BIKE ride
+    await Vehicle.updateOne({ driverId: d.profileId }, { vehicleType: "CAB" });
+
+    assert.equal((await api("GET", "/api/drivers/rides/requests", d.token)).body.data!.length, 0);
+    const accept = await api("POST", `/api/rides/${rideId}/accept`, d.token);
+    assert.equal(accept.status, 403);
+    assert.equal((await Ride.findById(rideId))!.status, "SEARCHING");
+  });
+
+  it("counts online drivers per vehicle type, at any distance", async () => {
     const p = await makeUser("PASSENGER");
     await makeDriver({ vehicleType: "CAB", kmNorth: 30 });
     const res = await api(
@@ -837,7 +856,9 @@ describe("MATCH_ALL_DRIVERS mode", () => {
       p.token,
     );
     assert.equal(res.body.data!.matchAllDrivers, true);
-    for (const type of ["BIKE", "AUTO", "CAB"]) assert.equal(res.body.data!.byType[type].count, 1);
+    assert.equal(res.body.data!.byType.CAB.count, 1);
+    assert.equal(res.body.data!.byType.BIKE.count, 0);
+    assert.equal(res.body.data!.byType.AUTO.count, 0);
   });
 });
 

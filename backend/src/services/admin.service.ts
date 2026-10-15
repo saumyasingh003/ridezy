@@ -814,6 +814,19 @@ export async function listAuditLogs({ page, limit }: { page: number; limit: numb
       .populate("adminId", "name email role"),
   ]);
 
+  // Who each log is about (name/email), so the UI can show people, not ids.
+  const driverIds = logs
+    .filter((log) => log.targetType === "DRIVER" && Types.ObjectId.isValid(log.targetId))
+    .map((log) => new Types.ObjectId(log.targetId));
+  const drivers = driverIds.length
+    ? await DriverProfile.find({ _id: { $in: driverIds } }, { userId: 1 }).populate<{
+        userId: { name: string; email: string } | null;
+      }>("userId", "name email")
+    : [];
+  const targets = new Map(
+    drivers.map((d) => [String(d._id), d.userId ? { name: d.userId.name, email: d.userId.email } : null]),
+  );
+
   const formattedLogs = logs.map((log) => {
     const admin = log.adminId as any;
     return {
@@ -823,6 +836,7 @@ export async function listAuditLogs({ page, limit }: { page: number; limit: numb
       targetType: log.targetType,
       targetId: log.targetId,
       details: log.details ?? null,
+      target: targets.get(log.targetId) ?? null,
       createdAt: log.createdAt,
       admin: admin
         ? { id: String(admin._id), name: admin.name, email: admin.email, role: admin.role }

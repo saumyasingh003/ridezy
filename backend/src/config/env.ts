@@ -49,9 +49,10 @@ const envSchema = z
     MATCHING_BATCH_SIZE: z.coerce.number().int().min(1).max(10).default(3),
     RIDE_SEARCH_TIMEOUT_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
     // "true" (temporary default while testing with few drivers): every online,
-    // verified driver gets every ride, ignoring vehicle type, distance and
-    // location age. "false": strict matching (same type, within the radius,
-    // fresh location). Verification and document checks apply either way.
+    // verified driver WITH THE BOOKED VEHICLE TYPE gets the ride, ignoring
+    // distance and location age. "false": strict matching (within the radius,
+    // fresh location). Vehicle type, verification and document checks apply
+    // either way.
     MATCH_ALL_DRIVERS: z.enum(["true", "false"]).default("true"),
 
     // Ride chat & calling. ICE servers are handed to browsers for WebRTC:

@@ -33,7 +33,8 @@ export function rankCandidates(candidates: NearbyDriver[]): NearbyDriver[] {
  */
 export async function offerRideToNearbyDrivers(ride: RideDocument): Promise<RideDocument | null> {
   const matchAll = env.rides.matchAllDrivers;
-  // Match-all mode offers the ride to every eligible driver at once.
+  // Match-all mode offers the ride to every eligible driver of this vehicle
+  // type at once, ignoring distance; the vehicle type is always enforced.
   const batchSize = matchAll ? 100 : env.rides.matchingBatchSize;
   const alreadyContacted = new Set([...ride.offeredDriverIds, ...ride.rejectedDriverIds].map(String));
 

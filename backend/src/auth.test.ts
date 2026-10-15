@@ -296,6 +296,7 @@ describe("POST /api/auth/resend-otp", () => {
     assert.equal(res.status, 200);
     const secondOtp = outbox.get("resend@example.com");
     assert.match(secondOtp ?? "", /^\d{6}$/);
+    assert.ok(!JSON.stringify(res.body).includes(secondOtp!), "OTP is not in the response");
     assert.equal(await EmailVerificationOTP.countDocuments(), 1, "only one active OTP per user");
 
     if (firstOtp !== secondOtp) {

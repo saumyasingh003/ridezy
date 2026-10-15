@@ -17,6 +17,7 @@ import {
   Activity,
   History,
   Check,
+  XCircle,
 } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 
@@ -122,8 +123,28 @@ interface AuditLogEntry {
   targetType: string;
   targetId: string;
   details?: Record<string, any>;
+  /** Who the action was about (the driver), resolved by the backend. */
+  target?: { name: string; email: string } | null;
   createdAt: string;
   admin?: { id: string; name: string; email: string; role?: string } | null;
+}
+
+type Tone = "emerald" | "rose" | "amber" | "sky" | "stone";
+
+const TONES: Record<Tone, { bubble: string; border: string }> = {
+  emerald: { bubble: "bg-emerald-50 text-emerald-600", border: "border-emerald-300" },
+  rose: { bubble: "bg-rose-50 text-rose-600", border: "border-rose-300" },
+  amber: { bubble: "bg-amber-50 text-amber-600", border: "border-amber-300" },
+  sky: { bubble: "bg-sky-50 text-sky-600", border: "border-sky-300" },
+  stone: { bubble: "bg-stone-100 text-stone-600", border: "border-stone-300" },
+};
+
+interface LogSummary {
+  title: string;
+  tone: Tone;
+  icon: React.ComponentType<{ className?: string }>;
+  reason: string;
+  documents: string[];
 }
 
 export default function AdminAuditLogsPage() {
@@ -187,12 +208,47 @@ export default function AdminAuditLogsPage() {
     const adminMatch =
       log.admin?.name?.toLowerCase().includes(q) ||
       log.admin?.email?.toLowerCase().includes(q);
-    const reasonMatch =
-      typeof log.details?.reason === "string" &&
-      log.details.reason.toLowerCase().includes(q);
+    const reasonMatch = summaryText(log).toLowerCase().includes(q);
 
     return actionMatch || targetMatch || adminMatch || reasonMatch;
   });
+
+  // What the Details column shows: a sentence per action (never raw JSON),
+  // plus the reason and documents when the log has them.
+  const describeLog = (log: AuditLogEntry): LogSummary => {
+    const details = log.details ?? {};
+    const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+    const reason = text(details.reason) || text(details.rejectionReason);
+    const documents: string[] = Array.isArray(details.documentTypes)
+      ? details.documentTypes.map((d: string) => d.replace(/_/g, " ").toLowerCase())
+      : [];
+
+    switch (normalizeAction(log.action)) {
+      case "DRIVER_VERIFIED":
+        return { title: "Driver successfully verified", tone: "emerald", icon: CheckCircle2, reason, documents };
+      case "DRIVER_REJECTED":
+        return { title: "Driver verification rejected", tone: "rose", icon: XCircle, reason, documents };
+      case "DRIVER_SUSPENDED":
+        return { title: "Driver account suspended", tone: "amber", icon: AlertTriangle, reason, documents };
+      case "DRIVER_ACTIVATED":
+        return { title: "Driver successfully reactivated", tone: "sky", icon: ShieldCheck, reason, documents };
+      default: {
+        const label = log.action.replace(/_/g, " ").toLowerCase();
+        return {
+          title: label.charAt(0).toUpperCase() + label.slice(1),
+          tone: "stone",
+          icon: Activity,
+          reason,
+          documents,
+        };
+      }
+    }
+  };
+
+  const summaryText = (log: AuditLogEntry) => {
+    const { title, reason, documents } = describeLog(log);
+    return [title, log.target?.name, log.target?.email, reason, ...documents].filter(Boolean).join(" ");
+  };
 
   const getActionBadge = (action: string) => {
     const normalized = normalizeAction(action);
@@ -324,10 +380,9 @@ export default function AdminAuditLogsPage() {
                 </tr>
               ) : (
                 filteredLogs.map((log) => {
-                  const reason =
-                    log.details?.reason ||
-                    log.details?.rejectionReason ||
-                    (log.details ? JSON.stringify(log.details) : "Standard admin action");
+                  const summary = describeLog(log);
+                  const tone = TONES[summary.tone];
+                  const SummaryIcon = summary.icon;
 
                   return (
                     <tr key={log.id} className="hover:bg-[#F9F9F6] transition-colors">
@@ -374,9 +429,38 @@ export default function AdminAuditLogsPage() {
 
                       {/* Details / Reason */}
                       <td className="py-4 px-5 sm:px-6">
-                        <p className="text-xs text-stone-700 max-w-md line-clamp-2">
-                          {reason}
-                        </p>
+                        <div className="flex items-start gap-2.5 max-w-md">
+                          <span className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${tone.bubble}`}>
+                            <SummaryIcon className="h-3.5 w-3.5" />
+                          </span>
+                          <div className="min-w-0 space-y-1">
+                            <p className="text-xs font-semibold text-stone-900">{summary.title}</p>
+                            {log.target?.name && (
+                              <p className="text-[11px] text-stone-500 truncate">
+                                {log.target.name}
+                                {log.target.email && <span className="text-stone-400"> · {log.target.email}</span>}
+                              </p>
+                            )}
+                            {summary.reason && (
+                              <p className={`rounded-lg border-l-2 bg-stone-50 px-2.5 py-1.5 text-[11px] leading-relaxed text-stone-600 ${tone.border}`}>
+                                <span className="font-semibold text-stone-700">Reason: </span>
+                                {summary.reason}
+                              </p>
+                            )}
+                            {summary.documents.length > 0 && (
+                              <div className="flex flex-wrap gap-1">
+                                {summary.documents.map((doc) => (
+                                  <span
+                                    key={doc}
+                                    className="rounded-md bg-stone-100 px-1.5 py-0.5 text-[10px] font-medium capitalize text-stone-600"
+                                  >
+                                    {doc}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </td>
                     </tr>
                   );

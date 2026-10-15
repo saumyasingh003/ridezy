@@ -417,6 +417,10 @@ export default function DriverLiveRidesPage() {
     if (res?.ok && res.data) {
       setAssignedRide(res.data);
       showToast(res.message || "Passenger notified that you have arrived.", "info");
+      // Put the car on the pickup point (for the passenger's map too), so the
+      // trip simulation starts from there.
+      simulation.stop();
+      sendSimulatedLocation(res.data.pickup).catch((err: Error) => showToast(err.message, "error"));
     }
   };
 
@@ -482,11 +486,24 @@ export default function DriverLiveRidesPage() {
   }, []);
 
   /* ---------- Map + drive simulation (testing without moving) ---------- */
+  // Last simulated position. While set, the periodic push re-sends it instead
+  // of browser GPS, so real GPS can't pull the car back off the route.
+  const simulatedPoint = useRef<LatLng | null>(null);
   const sendSimulatedLocation = useCallback(async (point: LatLng) => {
-    const { ok, json } = await driverApi("/drivers/location", { method: "PATCH", body: JSON.stringify(point) });
+    const { latitude, longitude } = point;
+    const { ok, json } = await driverApi("/drivers/location", {
+      method: "PATCH",
+      body: JSON.stringify({ latitude, longitude }),
+    });
     if (!ok) throw new Error(json.message || "Failed to update location.");
+    simulatedPoint.current = { latitude, longitude };
     setDriverLocation(json.data);
   }, []);
+  // Back to real GPS once the ride is over.
+  const activeRideId = assignedRide?.id ?? null;
+  useEffect(() => {
+    if (!activeRideId) simulatedPoint.current = null;
+  }, [activeRideId]);
   const arrivalMessage = useRef("");
   const simulation = useDriveSimulation({
     onPosition: sendSimulatedLocation,
@@ -537,7 +554,9 @@ export default function DriverLiveRidesPage() {
     const id = setInterval(async () => {
       if (simulatingRef.current) return; // the drive simulator is sending positions
       try {
-        await pushLocation();
+        // Keep a simulated position fresh instead of jumping back to real GPS.
+        if (simulatedPoint.current) await sendSimulatedLocation(simulatedPoint.current);
+        else await pushLocation();
         lastPushFailed.current = false;
       } catch (err) {
         // Toast once per failure streak, not every tick.
@@ -546,7 +565,7 @@ export default function DriverLiveRidesPage() {
       }
     }, LOCATION_PUSH_MS);
     return () => clearInterval(id);
-  }, [isOnline, pushLocation, showToast]);
+  }, [isOnline, pushLocation, sendSimulatedLocation, showToast]);
 
   const setBackendAvailability = async (status: "AVAILABLE" | "OFFLINE") => {
     const { ok, json } = await driverApi("/drivers/availability", {

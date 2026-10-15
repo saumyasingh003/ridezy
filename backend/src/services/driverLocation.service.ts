@@ -229,11 +229,13 @@ export async function findNearbyAvailableDrivers(options: {
   radiusMeters?: number;
   limit?: number;
   vehicleType?: VehicleType;
-  /** Ignore distance, location age and vehicle type (MATCH_ALL_DRIVERS). Still nearest first. */
+  /**
+   * Ignore distance and location age (MATCH_ALL_DRIVERS). Still nearest first.
+   * The vehicle type is NEVER relaxed: a BIKE ride only goes to BIKE drivers.
+   */
   matchAll?: boolean;
 }): Promise<NearbyDriver[]> {
-  const { radiusMeters = env.location.nearbyRadiusMeters, limit = 20, matchAll = false } = options;
-  const vehicleType = matchAll ? undefined : options.vehicleType;
+  const { radiusMeters = env.location.nearbyRadiusMeters, limit = 20, matchAll = false, vehicleType } = options;
   assertValidCoordinates(options);
 
   return DriverProfile.aggregate<NearbyDriver>([
@@ -313,8 +315,8 @@ export async function countNearbyAvailableByType(point: Coordinates) {
   const drivers = await findNearbyAvailableDrivers({ ...point, limit: 200, matchAll });
   const byType = Object.fromEntries(
     VEHICLE_TYPES.map((type) => {
-      // Match-all mode: every online driver can take any type of ride.
-      const ofType = matchAll ? drivers : drivers.filter((d) => d.vehicleType === type); // nearest first
+      // Only drivers with this vehicle type can take this type of ride.
+      const ofType = drivers.filter((d) => d.vehicleType === type); // nearest first
       const nearest = ofType[0];
       const nearestKm = nearest ? (nearest.distanceMeters / 1000) * ROAD_FACTOR : null;
       return [

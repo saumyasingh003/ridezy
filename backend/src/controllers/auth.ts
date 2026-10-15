@@ -57,7 +57,7 @@ export async function register(req: Request, res: Response): Promise<void> {
     throw new AppError(409, field === "phone" ? MSG.phoneTaken : MSG.emailTaken);
   });
 
-  const generatedOtp = await sendNewOtp(user).catch((err: unknown) => {
+  await sendNewOtp(user).catch((err: unknown) => {
     throw new AppError(503, "Account created, but we couldn't send the verification email. Please request a new code.", {
       cause: err,
     });
@@ -66,7 +66,6 @@ export async function register(req: Request, res: Response): Promise<void> {
   res.status(201).json({
     success: true,
     message: "Registration successful. Verification email sent successfully.",
-    otp: generatedOtp,
   });
 }
 
@@ -108,13 +107,11 @@ export async function resendOTP(req: Request, res: Response): Promise<void> {
   const { email } = resendOtpSchema.parse(req.body);
 
   const user = await User.findOne({ email });
+  if (user && !user.isEmailVerified) await sendNewOtp(user);
 
-  let otp: string | undefined;
-  if (user && !user.isEmailVerified) {
-    otp = await sendNewOtp(user);
-  }
-
-  res.json({ success: true, message: MSG.resendGeneric, ...(otp ? { otp } : {}) });
+  // Same response either way (no account enumeration), and never the code
+  // itself: it must only reach the user through their inbox.
+  res.json({ success: true, message: MSG.resendGeneric });
 }
 
 /** POST /api/auth/login: verify credentials and issue a JWT. */
@@ -240,13 +237,15 @@ function otpMatches(otp: string, userId: string, storedHash: string): boolean {
 }
 
 /**
- * Stores a fresh OTP (replacing the old one) and emails it.
+ * Stores a fresh OTP (replacing the old one) and emails it. The plain code
+ * exists only in this function and in the email; it is never returned to
+ * the caller, so no API response can leak it.
  *
  * Cooldown, enforced atomically: the filter only matches an OTP older than
  * 60s. If a newer one exists, the upsert tries to insert a second document
  * for this user, the unique index on userId rejects it, and we answer 429.
  */
-async function sendNewOtp(user: UserDocument): Promise<string> {
+async function sendNewOtp(user: UserDocument): Promise<void> {
   const otp = generateOtp();
   const now = Date.now();
 
@@ -275,5 +274,4 @@ async function sendNewOtp(user: UserDocument): Promise<string> {
     logger.error(`Verification email to ${user.email} failed`, err);
     throw err;
   }
-  return otp;
 }

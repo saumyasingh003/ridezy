@@ -331,9 +331,15 @@ export async function listRideRequests(userId: string) {
   // Offers made earlier must disappear if the driver (or a document) is no longer verified.
   if (!(await isEligibleForRides(profile))) return [];
 
+  // Offers follow the driver's CURRENT vehicle: if they switched from a bike
+  // to a cab, the bike rides they were offered earlier disappear.
+  const vehicle = await Vehicle.findOne({ driverId: profile._id }, { vehicleType: 1 });
+  if (!vehicle) return [];
+
   const rides = await Ride.find({
     status: "SEARCHING",
     offeredDriverIds: profile._id,
+    vehicleType: vehicle.vehicleType,
     createdAt: { $gte: new Date(Date.now() - env.rides.searchTimeoutMs) },
   }).sort({ createdAt: 1 });
 
@@ -387,9 +393,8 @@ export async function acceptRide(userId: string, rideId: string) {
 
   const vehicle = await Vehicle.findOne({ driverId: profile._id });
   if (!vehicle) throw new AppError(403, "Add a vehicle before accepting rides.");
-  // Strict mode: the vehicle must match the booked type. Match-all mode accepts any.
-  const matchAll = env.rides.matchAllDrivers;
-  if (!matchAll && vehicle.vehicleType !== ride.vehicleType) {
+  // The vehicle must match the booked type, in every matching mode.
+  if (vehicle.vehicleType !== ride.vehicleType) {
     throw new AppError(403, `This ride needs a ${ride.vehicleType}; your vehicle doesn't match.`);
   }
 
@@ -408,7 +413,7 @@ export async function acceptRide(userId: string, rideId: string) {
           _id: ride._id,
           status: { $in: statusesThatCanBecome("DRIVER_ASSIGNED") },
           offeredDriverIds: profile._id,
-          ...(matchAll ? {} : { vehicleType: vehicle.vehicleType }),
+          vehicleType: vehicle.vehicleType,
         },
         {
           $set: {

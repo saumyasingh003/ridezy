@@ -308,10 +308,8 @@ export default function OnboardingPage() {
         if (typeof window !== "undefined") {
           localStorage.setItem("userRole", role);
         }
-        if (data.otp && typeof data.otp === "string") {
-          const otpDigits = data.otp.split("").slice(0, 6);
-          setOtp(otpDigits);
-        }
+        // The code is only in the user's inbox; they type or paste it themselves.
+        resetOtpInputs();
         setStep("OTP");
         setResendSeconds(60);
       } else {
@@ -327,6 +325,12 @@ export default function OnboardingPage() {
   };
 
   const [lastAttemptedOtp, setLastAttemptedOtp] = useState<string>("");
+
+  const resetOtpInputs = () => {
+    setOtp(["", "", "", "", "", ""]);
+    setLastAttemptedOtp("");
+    setTimeout(() => otpInputs.current[0]?.focus(), 0);
+  };
 
   // OTP Input Handlers
   const handleOtpChange = (index: number, value: string) => {
@@ -389,6 +393,7 @@ export default function OnboardingPage() {
         const errorMsg =
           data.errors?.[0]?.message || data.message || "Invalid or expired OTP.";
         showToast(errorMsg, "error");
+        resetOtpInputs();
       }
     } catch {
       showToast("Cannot connect to server. Please try again.", "error");
@@ -435,11 +440,7 @@ export default function OnboardingPage() {
 
       if (res.ok && data.success) {
         showToast(data.message, "success");
-        if (data.otp && typeof data.otp === "string") {
-          const otpDigits = data.otp.split("").slice(0, 6);
-          setOtp(otpDigits);
-          setLastAttemptedOtp("");
-        }
+        resetOtpInputs();
         setResendSeconds(60);
       } else {
         const errorMsg =
@@ -505,6 +506,12 @@ export default function OnboardingPage() {
         const errorMsg =
           data.errors?.[0]?.message || data.message || "Invalid email or password.";
         showToast(errorMsg, "error");
+        // 403 = right password but email not verified yet: let them request a code.
+        if (res.status === 403) {
+          resetOtpInputs();
+          setResendSeconds(0);
+          setStep("OTP");
+        }
       }
     } catch {
       showToast("Cannot connect to server. Please try again.", "error");
@@ -1143,6 +1150,8 @@ export default function OnboardingPage() {
                       }}
                       type="text"
                       inputMode="numeric"
+                      autoComplete="off"
+                      aria-label={`Digit ${index + 1} of 6`}
                       maxLength={1}
                       value={digit}
                       onChange={(e) => handleOtpChange(index, e.target.value)}
@@ -1156,7 +1165,7 @@ export default function OnboardingPage() {
                 {otp.every((d) => d && /\d/.test(d)) && (
                   <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-emerald-600 -mt-2">
                     <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                    <span>Code auto-filled &amp; verifying...</span>
+                    <span>Verifying code...</span>
                   </div>
                 )}
 
