@@ -99,7 +99,7 @@ function CustomDropdown({
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-1.5 w-48 rounded-xl border border-[#EDEDE8] bg-white p-1.5 shadow-xl shadow-stone-900/10 z-50 animate-in fade-in zoom-in-95">
+        <div className="absolute left-0 mt-1 min-w-full w-max max-w-[calc(100vw-2rem)] rounded-xl border border-[#EDEDE8] bg-white p-1 shadow-lg shadow-stone-900/10 z-50 animate-in fade-in zoom-in-95 whitespace-nowrap">
           {options.map((opt) => {
             const isSelected = opt.value === value;
             return (
@@ -110,7 +110,7 @@ function CustomDropdown({
                   onChange(opt.value);
                   setIsOpen(false);
                 }}
-                className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-medium text-left cursor-pointer transition-colors ${
+                className={`w-full flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-xs font-medium text-left cursor-pointer transition-colors ${
                   isSelected
                     ? "bg-stone-900 text-white shadow-2xs font-semibold"
                     : "text-stone-700 hover:bg-stone-100 hover:text-stone-900"
@@ -269,24 +269,30 @@ export default function AdminRidesPage() {
   return (
     <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-300">
       {/* 1. TOP HERO BANNER */}
-      <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-white border border-[#EDEDE8] shadow-xs h-[190px] sm:h-[210px] lg:h-[225px] flex items-center w-full shrink-0">
-        <div className="absolute inset-0 w-full h-full pointer-events-none select-none">
+      <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-white via-[#FCFBF7] to-[#F5F3EB] border border-[#EDEDE8] shadow-xs min-h-[175px] sm:min-h-[195px] lg:h-[220px] py-4 sm:py-5 flex items-center w-full shrink-0">
+        {/* Background photo - visible only on wide screens (xl+) strictly confined to the right half to prevent text collision */}
+        <div className="hidden xl:block absolute right-0 top-0 bottom-0 w-1/2 pointer-events-none select-none overflow-hidden">
           <Image
             src="/admin-banner.jpg"
             alt="Ride Dispatch Operations Banner"
             fill
             priority
-            className="object-cover"
-            style={{ objectPosition: "right 19%" }}
+            className="object-cover object-right"
           />
+          {/* Smooth gradient mask blending image into background card */}
+          <div className="absolute inset-0 bg-gradient-to-r from-[#FCFBF7] via-[#FCFBF7]/50 to-transparent" />
         </div>
 
-        <div className="relative z-10 w-full px-6 py-4 sm:px-8 sm:py-5 flex flex-col justify-center">
+        {/* Ambient glow accents on smaller screens */}
+        <div className="xl:hidden pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[#E5E9CA]/40 blur-2xl" />
+        <div className="xl:hidden pointer-events-none absolute -left-12 -bottom-12 h-36 w-36 rounded-full bg-[#E5E9CA]/25 blur-2xl" />
+
+        <div className="relative z-10 w-full px-4 sm:px-8 py-2 sm:py-4 flex flex-col justify-center">
           <div className="max-w-xl">
-            <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7A74]">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7A74]">
               Operations &amp; Dispatch
             </span>
-            <h1 className="font-caslon text-2xl sm:text-3xl lg:text-[34px] font-bold text-[#111111] tracking-tight leading-tight mt-1">
+            <h1 className="font-caslon text-xl sm:text-3xl lg:text-[34px] font-bold text-[#111111] tracking-tight leading-tight mt-1 break-words">
               Live Rides &amp; Trip Logs
             </h1>
             <p className="text-xs sm:text-sm text-stone-600 mt-1 font-normal leading-relaxed">

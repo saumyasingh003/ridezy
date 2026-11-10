@@ -152,33 +152,39 @@ export default function AdminDashboardPage() {
   }, []);
 
   return (
-    <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-300">
+    <div className="space-y-3.5 sm:space-y-5 animate-in fade-in duration-300">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-5 right-5 z-50 rounded-xl bg-black px-4 py-2.5 text-xs text-white shadow-xl animate-in fade-in">
+        <div className="fixed bottom-5 right-5 z-50 rounded-xl bg-black px-4 py-2.5 text-xs text-white shadow-xl animate-in fade-in max-w-[90vw]">
           {toastMessage}
         </div>
       )}
 
       {/* 1. TOP HERO BANNER */}
-      <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-white border border-[#EDEDE8] shadow-xs h-[190px] sm:h-[210px] lg:h-[225px] flex items-center w-full shrink-0">
-        <div className="absolute inset-0 w-full h-full pointer-events-none select-none">
+      <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-white via-[#FCFBF7] to-[#F5F3EB] border border-[#EDEDE8] shadow-xs min-h-[175px] sm:min-h-[195px] lg:h-[220px] py-4 sm:py-5 flex items-center w-full shrink-0">
+        {/* Background photo - visible only on wide screens (xl+) strictly confined to the right half to prevent text collision */}
+        <div className="hidden xl:block absolute right-0 top-0 bottom-0 w-1/2 pointer-events-none select-none overflow-hidden">
           <Image
             src="/admin-banner.jpg"
             alt="Admin Platform Overview Banner"
             fill
             priority
-            className="object-cover"
-            style={{ objectPosition: "right 19%" }}
+            className="object-cover object-right"
           />
+          {/* Smooth gradient mask blending image into background card */}
+          <div className="absolute inset-0 bg-gradient-to-r from-[#FCFBF7] via-[#FCFBF7]/50 to-transparent" />
         </div>
 
-        <div className="relative z-10 w-full px-6 py-4 sm:px-8 sm:py-5 flex flex-col justify-center">
+        {/* Ambient glow accents on smaller screens */}
+        <div className="xl:hidden pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[#E5E9CA]/40 blur-2xl" />
+        <div className="xl:hidden pointer-events-none absolute -left-12 -bottom-12 h-36 w-36 rounded-full bg-[#E5E9CA]/25 blur-2xl" />
+
+        <div className="relative z-10 w-full px-4 sm:px-8 py-2 sm:py-4 flex flex-col justify-center">
           <div className="max-w-xl">
-            <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7A74]">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7A74]">
               Platform Overview &amp; Control
             </span>
-            <h1 className="font-caslon text-2xl sm:text-3xl lg:text-[34px] font-bold text-[#111111] tracking-tight leading-tight mt-1">
+            <h1 className="font-caslon text-xl sm:text-3xl lg:text-[34px] font-bold text-[#111111] tracking-tight leading-tight mt-1 break-words">
               Welcome back, {adminName}
             </h1>
             <p className="text-xs sm:text-sm text-stone-600 mt-1 font-normal leading-relaxed">
@@ -189,21 +195,21 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Platform Analytics Snapshot Strip (GET /api/admin/analytics) */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 px-4 py-3 sm:px-5 sm:py-3.5 bg-white border border-[#EDEDE8] rounded-2xl shadow-xs">
-        <div className="flex flex-wrap items-center gap-3 sm:gap-6 text-xs">
-          <div className="flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 px-3.5 py-3 sm:px-5 sm:py-3.5 bg-white border border-[#EDEDE8] rounded-2xl shadow-xs">
+        <div className="flex flex-wrap items-center gap-2.5 sm:gap-6 text-xs">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[11px] font-bold uppercase tracking-wider text-stone-500">Live Telemetry:</span>
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-stone-500">Live Telemetry:</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-stone-500">Platform Revenue:</span>
+            <span className="text-stone-500">Revenue:</span>
             <span className="font-bold text-stone-900 font-mono">
               ₹{(analyticsSnapshot?.revenue?.amount ?? analyticsSnapshot?.totalRevenue ?? 0).toLocaleString("en-IN")}
             </span>
           </div>
           <div className="hidden sm:inline text-stone-300">|</div>
           <div className="flex items-center gap-1.5">
-            <span className="text-stone-500">Total Rides:</span>
+            <span className="text-stone-500">Rides:</span>
             <span className="font-bold text-stone-900 font-mono">
               {(analyticsSnapshot?.totalRides ?? stats.totalRides ?? 0).toLocaleString()}
             </span>
@@ -218,7 +224,7 @@ export default function AdminDashboardPage() {
         </div>
         <Link
           href="/admin/analytics"
-          className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-900 text-white text-xs font-semibold hover:bg-stone-800 transition-colors shadow-2xs shrink-0"
+          className="inline-flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-900 text-white text-xs font-semibold hover:bg-stone-800 transition-colors shadow-2xs shrink-0"
         >
           <span>Deep Analytics</span>
           <ChevronRight className="w-3.5 h-3.5" />
@@ -226,7 +232,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* 2. Key Metrics Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 min-[420px]:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
         {/* Metric 1: Total Customers */}
         <Link
           href="/admin/customer"
@@ -330,33 +336,33 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* 3. Quick Action Overview: Verification Queue & System Status */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
         {/* Card 1: Driver Verification Queue (GET /api/admin/drivers/pending-verification) */}
-        <div className="rounded-3xl bg-white border border-[#EDEDE8] p-6 shadow-xs flex flex-col justify-between">
+        <div className="rounded-2xl sm:rounded-3xl bg-white border border-[#EDEDE8] p-4 sm:p-6 shadow-xs flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between pb-4 border-b border-[#F0EFEA]">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                  <AlertTriangle className="w-4 h-4" />
+            <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-[#F0EFEA]">
+              <div className="flex items-center gap-2 sm:gap-2.5">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </div>
                 <div>
-                  <h3 className="font-caslon text-lg font-bold text-[#111111]">
+                  <h3 className="font-caslon text-base sm:text-lg font-bold text-[#111111]">
                     Pending Verification
                   </h3>
-                  <p className="text-xs text-stone-500">
+                  <p className="text-[11px] sm:text-xs text-stone-500">
                     {pendingDrivers.length} waiting for approval
                   </p>
                 </div>
               </div>
               <Link
                 href="/admin/driver"
-                className="text-xs font-bold text-black hover:underline"
+                className="text-xs font-bold text-black hover:underline shrink-0"
               >
                 View All &rarr;
               </Link>
             </div>
 
-            <div className="mt-4 space-y-3">
+            <div className="mt-3 sm:mt-4 space-y-2.5 sm:space-y-3">
               {pendingDrivers.length === 0 ? (
                 <p className="text-xs text-stone-400 py-6 text-center">
                   No drivers waiting for verification.
@@ -371,27 +377,27 @@ export default function AdminDashboardPage() {
                     <Link
                       key={driverId}
                       href={`/admin/driver/${driverId}`}
-                      className="flex items-center justify-between p-3.5 rounded-2xl bg-stone-50 border border-stone-200/60 hover:bg-stone-100/80 hover:border-stone-300 transition-all group cursor-pointer"
+                      className="flex items-center justify-between p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-stone-50 border border-stone-200/60 hover:bg-stone-100/80 hover:border-stone-300 transition-all group cursor-pointer"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-9 h-9 shrink-0 rounded-full bg-black text-white flex items-center justify-center text-xs font-bold font-caslon">
+                      <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                        <div className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-full bg-black text-white flex items-center justify-center text-xs font-bold font-caslon">
                           {initial}
                         </div>
                         <div className="min-w-0">
                           <p className="text-xs font-bold text-stone-900 group-hover:underline truncate">
                             {dName}
                           </p>
-                          <p className="text-[11px] text-stone-500 font-mono truncate">
+                          <p className="text-[10px] sm:text-[11px] text-stone-500 font-mono truncate">
                             DL: {driver.licenseNumber || "Pending"}
                           </p>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2.5 shrink-0 ml-2">
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800">
+                      <div className="flex items-center gap-2 shrink-0 ml-2">
+                        <span className="text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md bg-amber-100 text-amber-800">
                           PENDING
                         </span>
-                        <ChevronRight className="w-4 h-4 text-stone-400 group-hover:text-black group-hover:translate-x-0.5 transition-all" />
+                        <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-stone-400 group-hover:text-black group-hover:translate-x-0.5 transition-all" />
                       </div>
                     </Link>
                   );
@@ -402,55 +408,55 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* Card 2: Administrator Profile Personal Data */}
-        <div className="rounded-3xl bg-white border border-[#EDEDE8] p-6 shadow-xs flex flex-col justify-between">
+        <div className="rounded-2xl sm:rounded-3xl bg-white border border-[#EDEDE8] p-4 sm:p-6 shadow-xs flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between pb-4 border-b border-[#F0EFEA]">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100/80">
-                  <User className="w-4 h-4" />
+            <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-[#F0EFEA]">
+              <div className="flex items-center gap-2 sm:gap-2.5">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100/80 shrink-0">
+                  <User className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </div>
                 <div>
-                  <h3 className="font-caslon text-lg font-bold text-[#111111]">
+                  <h3 className="font-caslon text-base sm:text-lg font-bold text-[#111111]">
                     Administrator Profile
                   </h3>
-                  <p className="text-xs text-stone-500">Personal &amp; Security Data</p>
+                  <p className="text-[11px] sm:text-xs text-stone-500">Personal &amp; Security Data</p>
                 </div>
               </div>
-              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 shrink-0">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 Active
               </span>
             </div>
 
-            <div className="mt-4 space-y-2.5 text-xs">
-              <div className="flex items-center justify-between py-2 border-b border-stone-100">
+            <div className="mt-3 sm:mt-4 space-y-2 sm:space-y-2.5 text-xs">
+              <div className="flex flex-col min-[420px]:flex-row min-[420px]:items-center justify-between py-1.5 sm:py-2 border-b border-stone-100 gap-0.5 min-[420px]:gap-2">
                 <span className="text-stone-500 font-medium">Full Name</span>
-                <span className="font-semibold text-stone-900">{adminProfile.name}</span>
+                <span className="font-semibold text-stone-900 truncate">{adminProfile.name}</span>
               </div>
-              <div className="flex items-center justify-between py-2 border-b border-stone-100">
+              <div className="flex flex-col min-[420px]:flex-row min-[420px]:items-center justify-between py-1.5 sm:py-2 border-b border-stone-100 gap-0.5 min-[420px]:gap-2">
                 <span className="text-stone-500 font-medium">Email Address</span>
-                <span className="font-semibold text-stone-900 font-mono text-[11px]">{adminProfile.email}</span>
+                <span className="font-semibold text-stone-900 font-mono text-[11px] truncate">{adminProfile.email}</span>
               </div>
-              <div className="flex items-center justify-between py-2 border-b border-stone-100">
+              <div className="flex flex-col min-[420px]:flex-row min-[420px]:items-center justify-between py-1.5 sm:py-2 border-b border-stone-100 gap-0.5 min-[420px]:gap-2">
                 <span className="text-stone-500 font-medium">Phone Number</span>
-                <span className="font-semibold text-stone-900 font-mono text-[11px]">
+                <span className="font-semibold text-stone-900 font-mono text-[11px] truncate">
                   {adminProfile.phone || "+91 98765 43210"}
                 </span>
               </div>
-              <div className="flex items-center justify-between py-2 border-b border-stone-100">
+              <div className="flex flex-col min-[420px]:flex-row min-[420px]:items-center justify-between py-1.5 sm:py-2 border-b border-stone-100 gap-0.5 min-[420px]:gap-2">
                 <span className="text-stone-500 font-medium">Platform Role</span>
                 <span className="font-semibold text-stone-900">
                   {adminProfile.role || "ADMIN"}
                 </span>
               </div>
-              <div className="flex items-center justify-between py-2 border-b border-stone-100">
+              <div className="flex flex-col min-[420px]:flex-row min-[420px]:items-center justify-between py-1.5 sm:py-2 border-b border-stone-100 gap-0.5 min-[420px]:gap-2">
                 <span className="text-stone-500 font-medium">Account Status</span>
                 <span className="inline-flex items-center gap-1 font-semibold text-emerald-600">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                   <span>Verified &amp; Active</span>
                 </span>
               </div>
-              <div className="flex items-center justify-between py-2">
+              <div className="flex flex-col min-[420px]:flex-row min-[420px]:items-center justify-between py-1.5 sm:py-2 gap-0.5 min-[420px]:gap-2">
                 <span className="text-stone-500 font-medium">Access Level</span>
                 <span className="font-semibold text-stone-900">Master Platform Superuser</span>
               </div>

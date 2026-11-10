@@ -16,7 +16,7 @@ export default function AdminLayout({
     <AuthGuard allowedRole="ADMIN">
       <div className="min-h-screen w-full flex flex-col bg-[#FBFBFA] text-[#111111]">
         <AdminNav />
-        <main className="flex-1 w-full px-4 sm:px-6 pt-2 sm:pt-3 pb-8">
+        <main className="flex-1 w-full px-3.5 sm:px-6 pt-2 sm:pt-3 pb-8">
           {children}
         </main>
       </div>

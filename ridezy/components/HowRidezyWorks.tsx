@@ -380,12 +380,9 @@ export default function HowRidezyWorks() {
           mx-auto
           w-full
           max-w-7xl
-          px-6
+          px-4
           sm:px-10
           lg:px-14
-          -translate-x-3
-          sm:-translate-x-5
-          lg:-translate-x-6
         "
       >
         <div
@@ -393,7 +390,8 @@ export default function HowRidezyWorks() {
             grid
             grid-cols-1
             items-center
-            gap-14
+            gap-10
+            sm:gap-14
             lg:grid-cols-[minmax(0,1fr)_400px]
             lg:gap-16
           "
@@ -416,7 +414,7 @@ export default function HowRidezyWorks() {
             id="how-ridezy-works-title"
             className="
               font-caslon
-              text-4xl
+              text-3xl
               sm:text-5xl
               lg:text-6xl
               font-bold

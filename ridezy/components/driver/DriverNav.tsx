@@ -3,9 +3,26 @@
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { ChevronDown, LogOut, User as UserIcon } from "lucide-react";
+import {
+  ChevronDown,
+  LogOut,
+  User as UserIcon,
+  LayoutDashboard,
+  Navigation,
+  Wallet,
+  Star,
+  FileText,
+} from "lucide-react";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import { API_BASE } from "@/lib/config";
+
+const links = [
+  { label: "Dashboard", href: "/driver", icon: LayoutDashboard },
+  { label: "Live Rides", href: "/driver/live-rides", icon: Navigation },
+  { label: "Earnings", href: "/driver/earnings", icon: Wallet },
+  { label: "Reviews", href: "/driver/reviews", icon: Star },
+  { label: "Vehicle & Docs", href: "/driver/vehicle-docs", icon: FileText },
+];
 
 export default function DriverNav() {
   const router = useRouter();
@@ -14,6 +31,11 @@ export default function DriverNav() {
   const [driverEmail, setDriverEmail] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on route change
+  useEffect(() => {
+    setIsDropdownOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -24,7 +46,6 @@ export default function DriverNav() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
 
   useEffect(() => {
     // 1. Initial read from localStorage
@@ -102,14 +123,17 @@ export default function DriverNav() {
     router.replace("/");
   };
 
+  const initial = driverName.trim() ? driverName.trim().charAt(0).toUpperCase() : "D";
+  const firstName = driverName.trim() ? driverName.trim().split(" ")[0] : "Driver";
+
   return (
     <header className="z-30 w-full shrink-0 border-b border-zinc-200 bg-white/95 backdrop-blur-md sticky top-0">
       <nav
         aria-label="Driver Navigation"
-        className="flex h-16 w-full items-center justify-between gap-4 px-4 sm:px-6 lg:px-8"
+        className="flex h-16 w-full items-center justify-between gap-3 px-3.5 sm:px-6 lg:px-8"
       >
         {/* Left: Logo + Driver Badge */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           <Link href="/" className="flex items-center gap-2.5 group" aria-label="Ridezy Driver Portal">
             <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black text-white shadow-xs group-hover:bg-neutral-800 transition-colors">
               <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
@@ -127,66 +151,46 @@ export default function DriverNav() {
           </Link>
         </div>
 
-        {/* Center: Quick Links */}
+        {/* Center: Quick Links (Visible on md+ screens) */}
         <div className="hidden md:flex items-center gap-1 font-caslon">
-          <Link
-            href="/driver"
-            className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
-              pathname === "/driver" || pathname === "/driver/dashboard"
-                ? "bg-black text-white shadow-xs"
-                : "text-zinc-600 hover:text-black hover:bg-zinc-100"
-            }`}
-          >
-            Dashboard
-          </Link>
-          <Link
-            href="/driver/live-rides"
-            className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
-              pathname === "/driver/live-rides"
-                ? "bg-black text-white shadow-xs"
-                : "text-zinc-600 hover:text-black hover:bg-zinc-100"
-            }`}
-          >
-            Live Rides
-          </Link>
-          <Link
-            href="/driver/earnings"
-            className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
-              pathname === "/driver/earnings"
-                ? "bg-black text-white shadow-xs"
-                : "text-zinc-600 hover:text-black hover:bg-zinc-100"
-            }`}
-          >
-            Earnings
-          </Link>
-          <Link
-            href="/driver/reviews"
-            className={`px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
-              pathname === "/driver/reviews"
-                ? "bg-black text-white shadow-xs"
-                : "text-zinc-600 hover:text-black hover:bg-zinc-100"
-            }`}
-          >
-            Reviews
-          </Link>
+          {links.map((link) => {
+            const active =
+              link.href === "/driver"
+                ? pathname === "/driver" || pathname === "/driver/dashboard"
+                : pathname === link.href || pathname.startsWith(link.href + "/");
+            return (
+              <Link
+                key={link.label}
+                href={link.href}
+                className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+                  active
+                    ? "bg-black text-white shadow-xs"
+                    : "text-zinc-600 hover:text-black hover:bg-zinc-100"
+                }`}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
         </div>
 
         {/* Right: Notifications + Profile Dropdown */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <NotificationBell />
+
           <div className="relative" ref={dropdownRef}>
             <button
               type="button"
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
               aria-expanded={isDropdownOpen}
-              aria-label="Driver profile menu"
-              className="flex items-center gap-2 rounded-full border border-zinc-200 bg-white py-1 pl-1 pr-2.5 transition-colors hover:bg-zinc-50 cursor-pointer shadow-2xs"
+              aria-label="Driver profile and navigation menu"
+              className="flex items-center gap-1.5 sm:gap-2 rounded-full border border-zinc-200 bg-white py-1 pl-1 pr-2 sm:pr-2.5 transition-colors hover:bg-zinc-50 cursor-pointer shadow-2xs"
             >
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-black text-xs font-bold text-white">
-                {driverName.charAt(0).toUpperCase()}
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-black text-xs font-bold text-white uppercase">
+                {initial}
               </span>
-              <span className="hidden sm:block text-xs font-semibold text-zinc-800 max-w-[120px] truncate">
-                {driverName}
+              <span className="hidden sm:block text-xs font-semibold text-zinc-800 max-w-[110px] truncate font-caslon">
+                {firstName}
               </span>
               <ChevronDown
                 size={14}
@@ -197,15 +201,15 @@ export default function DriverNav() {
             </button>
 
             {isDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-56 rounded-xl border border-zinc-200 bg-white p-1.5 shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100 ring-1 ring-black/5">
-                {/* Minimal Header */}
+              <div className="absolute right-0 mt-2 w-64 rounded-2xl border border-zinc-200/90 bg-white p-2 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100 ring-1 ring-black/5">
+                {/* Profile Header */}
                 <div className="px-2.5 py-2 border-b border-zinc-100 mb-1">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-black text-[11px] font-bold text-white">
-                      {driverName.charAt(0).toUpperCase()}
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black text-xs font-bold text-white uppercase">
+                      {initial}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-semibold text-zinc-900 truncate">
+                      <p className="text-xs font-bold text-zinc-900 truncate font-caslon">
                         {driverName}
                       </p>
                       <p className="text-[10px] text-zinc-400 truncate">
@@ -215,32 +219,82 @@ export default function DriverNav() {
                   </div>
                 </div>
 
-                {/* Minimal Items */}
-                <Link
-                  href="/driver/profile"
-                  onClick={() => setIsDropdownOpen(false)}
-                  className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                    pathname === "/driver/profile"
-                      ? "bg-zinc-100 text-black font-semibold"
-                      : "text-zinc-700 hover:text-black hover:bg-zinc-100"
-                  }`}
-                >
-                  <UserIcon className="w-3.5 h-3.5 text-zinc-500" />
-                  <span>My Profile</span>
-                </Link>
+                {/* All Navigation Links inside this Dropdown */}
+                <div className="py-1 border-b border-zinc-100 max-h-[60vh] overflow-y-auto">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 px-2.5 py-1">
+                    Navigation
+                  </p>
+                  <div className="space-y-0.5">
+                    {links.map((link) => {
+                      const Icon = link.icon;
+                      const active =
+                        link.href === "/driver"
+                          ? pathname === "/driver" || pathname === "/driver/dashboard"
+                          : pathname === link.href || pathname.startsWith(link.href + "/");
+                      return (
+                        <Link
+                          key={link.label}
+                          href={link.href}
+                          onClick={() => setIsDropdownOpen(false)}
+                          className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                            active
+                              ? "bg-black text-white font-semibold"
+                              : "text-zinc-700 hover:bg-zinc-100 hover:text-black"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Icon
+                              className={`w-3.5 h-3.5 shrink-0 transition-colors ${
+                                active ? "text-white" : "text-zinc-500"
+                              }`}
+                            />
+                            <span className="truncate">{link.label}</span>
+                          </div>
+                          {active && (
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />
+                          )}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
 
-                {/* Divider */}
-                <div className="my-1 border-t border-zinc-100" />
+                {/* Account Section */}
+                <div className="py-1 border-b border-zinc-100">
+                  <Link
+                    href="/driver/profile"
+                    onClick={() => setIsDropdownOpen(false)}
+                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      pathname === "/driver/profile"
+                        ? "bg-black text-white font-semibold"
+                        : "text-zinc-700 hover:bg-zinc-100 hover:text-black"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <UserIcon
+                        className={`w-3.5 h-3.5 shrink-0 ${
+                          pathname === "/driver/profile" ? "text-white" : "text-zinc-500"
+                        }`}
+                      />
+                      <span>My Profile</span>
+                    </div>
+                    {pathname === "/driver/profile" && (
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />
+                    )}
+                  </Link>
+                </div>
 
-                {/* Logout - No Subheadings */}
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-red-600 hover:bg-red-50 transition-colors cursor-pointer text-left"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Log out</span>
-                </button>
+                {/* Logout */}
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors cursor-pointer text-left"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Log out</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>

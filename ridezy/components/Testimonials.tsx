@@ -39,22 +39,22 @@ export default function Testimonials() {
       className="relative w-full overflow-hidden bg-[#FFFDF6] py-16 sm:py-20"
     >
 
-      <div className="relative mx-auto max-w-7xl px-6 sm:px-10 lg:px-14">
+      <div className="relative mx-auto max-w-7xl px-4 sm:px-10 lg:px-14">
         {/* Header */}
         <div className="text-center">
           <h2
             id="testimonials-title"
-            className="font-caslon text-4xl font-bold tracking-tight text-[#111111] sm:text-5xl"
+            className="font-caslon text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-[#111111]"
           >
             What Our Riders Say
           </h2>
-          <p className="mt-3 text-sm text-[#686863] sm:text-base">
+          <p className="mt-2 sm:mt-3 text-xs sm:text-base text-[#686863]">
             Trusted by millions across the country.
           </p>
         </div>
 
         {/* Cards */}
-        <div className="mt-10 grid gap-5 sm:mt-12 md:grid-cols-3 lg:gap-6">
+        <div className="mt-8 sm:mt-12 grid gap-4 sm:gap-5 md:grid-cols-3 lg:gap-6">
           {testimonials.map((t) => (
             <figure
               key={t.name}
@@ -62,12 +62,15 @@ export default function Testimonials() {
                 group
                 relative
                 flex
-                gap-4
-                rounded-3xl
+                gap-3.5
+                sm:gap-4
+                rounded-2xl
+                sm:rounded-3xl
                 border
                 border-[#EDEDE8]
                 bg-white
-                p-6
+                p-4
+                sm:p-6
                 shadow-[0_1px_2px_rgba(0,0,0,0.03)]
                 transition-all
                 duration-300
@@ -77,8 +80,8 @@ export default function Testimonials() {
             >
               <Quote
                 aria-hidden="true"
-                size={28}
-                className="absolute right-5 top-5 text-[#E5E9CA] transition-colors duration-300 group-hover:text-[#C9D3A4]"
+                size={24}
+                className="absolute right-4 top-4 text-[#E5E9CA] transition-colors duration-300 group-hover:text-[#C9D3A4]"
               />
 
               {/* Avatar */}
@@ -87,17 +90,17 @@ export default function Testimonials() {
                 alt={t.name}
                 width={56}
                 height={56}
-                className="h-14 w-14 shrink-0 rounded-full object-cover ring-4 ring-[#F3F4E5]"
+                className="h-11 w-11 sm:h-14 sm:w-14 shrink-0 rounded-full object-cover ring-4 ring-[#F3F4E5]"
               />
 
               <div className="min-w-0">
-                <blockquote className="pr-6 text-[15px] leading-6 text-[#3F4537]">
+                <blockquote className="pr-4 sm:pr-6 text-xs sm:text-[15px] leading-5 sm:leading-6 text-[#3F4537]">
                   &ldquo;{t.quote}&rdquo;
                 </blockquote>
 
-                <figcaption className="mt-4">
-                  <p className="text-sm font-bold text-[#111111]">{t.name}</p>
-                  <p className="text-xs text-[#8A8A84]">{t.role}</p>
+                <figcaption className="mt-3 sm:mt-4">
+                  <p className="text-xs sm:text-sm font-bold text-[#111111]">{t.name}</p>
+                  <p className="text-[11px] sm:text-xs text-[#8A8A84]">{t.role}</p>
                   <div
                     className="mt-2 flex gap-0.5"
                     aria-label="Rated 5 out of 5"

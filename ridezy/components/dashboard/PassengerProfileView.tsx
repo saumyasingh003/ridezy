@@ -939,25 +939,31 @@ export default function PassengerProfileView() {
         {/* ========================================================================= */}
         {/* 1. TOP HERO BANNER (Account & Security / Passenger Profile / Banner Image) */}
         {/* ========================================================================= */}
-        <div className="relative overflow-hidden  rounded-2xl sm:rounded-3xl bg-white border border-[#EDEDE8] shadow-xs h-[170px] sm:h-[190px] lg:h-[205px] flex items-center w-full shrink-0">
-          {/* Exact Banner Background */}
-          <div className="absolute inset-0 w-full h-full pointer-events-none select-none">
+        <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-white via-[#FCFBF7] to-[#F5F3EB] border border-[#EDEDE8] shadow-xs min-h-[175px] sm:min-h-[195px] lg:h-[220px] py-4 sm:py-5 flex items-center w-full shrink-0">
+          {/* Background photo - visible only on wide screens (xl+) strictly confined to the right half to prevent text collision */}
+          <div className="hidden xl:block absolute right-0 top-0 bottom-0 w-1/2 pointer-events-none select-none overflow-hidden">
             <Image
               src="/customer-banner2.webp"
               alt="Passenger Profile Banner"
               fill
               priority
-              className="object-cover object-right sm:object-center"
+              className="object-cover object-right"
             />
+            {/* Smooth gradient mask blending image into background card */}
+            <div className="absolute inset-0 bg-gradient-to-r from-[#FCFBF7] via-[#FCFBF7]/50 to-transparent" />
           </div>
 
+          {/* Ambient glow accents on smaller screens */}
+          <div className="xl:hidden pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[#E5E9CA]/40 blur-2xl" />
+          <div className="xl:hidden pointer-events-none absolute -left-12 -bottom-12 h-36 w-36 rounded-full bg-[#E5E9CA]/25 blur-2xl" />
+
           {/* Banner Content (Left Side Text + Edit Button) */}
-          <div className="relative z-10 w-full px-6 py-4 sm:px-8 sm:py-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="relative z-10 w-full px-4 sm:px-8 lg:px-12 py-2 sm:py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="max-w-xl">
-              <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7A74]">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7A74]">
                 Account &amp; Security
               </span>
-              <h1 className="font-caslon text-3xl sm:text-4xl lg:text-[40px] font-bold text-[#111111] tracking-tight leading-tight mt-1">
+              <h1 className="font-caslon text-2xl sm:text-3xl lg:text-4xl font-bold text-[#111111] tracking-tight leading-tight mt-1 break-words">
                 Passenger Profile
               </h1>
               <p className="text-xs sm:text-sm text-stone-600 mt-1 font-normal leading-relaxed">

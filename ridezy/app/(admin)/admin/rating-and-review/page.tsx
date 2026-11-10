@@ -54,6 +54,7 @@ interface CustomDropdownProps {
   onChange: (value: string) => void;
   options: DropdownOption[];
   ariaLabel?: string;
+  className?: string;
 }
 
 function CustomDropdown({
@@ -61,6 +62,7 @@ function CustomDropdown({
   onChange,
   options,
   ariaLabel,
+  className = "",
 }: CustomDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -90,14 +92,14 @@ function CustomDropdown({
   const isFiltered = value !== "ALL";
 
   return (
-    <div className="relative shrink-0" ref={containerRef}>
+    <div className={`relative ${className}`} ref={containerRef}>
       <button
         type="button"
         aria-label={ariaLabel || selectedOption.label}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         onClick={() => setIsOpen((prev) => !prev)}
-        className={`group inline-flex items-center justify-between gap-2.5 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-normal transition-colors duration-150 cursor-pointer select-none bg-white ${
+        className={`w-full group inline-flex items-center justify-between gap-2.5 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-normal transition-colors duration-150 cursor-pointer select-none bg-white ${
           isFiltered
             ? "border border-stone-300 text-stone-900 bg-stone-50/60 font-medium"
             : "border border-[#EDEDE8] text-stone-600 hover:text-stone-900 hover:border-stone-300"
@@ -119,7 +121,7 @@ function CustomDropdown({
       {isOpen && (
         <div
           role="listbox"
-          className="absolute right-0 mt-1 min-w-full w-max rounded-xl border border-[#EDEDE8] bg-white p-1 shadow-md z-50 animate-in fade-in zoom-in-95 duration-100 whitespace-nowrap"
+          className="absolute left-0 mt-1 min-w-full w-max max-w-[calc(100vw-2rem)] rounded-xl border border-[#EDEDE8] bg-white p-1 shadow-md z-50 animate-in fade-in zoom-in-95 duration-100 whitespace-nowrap"
         >
           {options.map((option) => {
             const active = option.value === value;
@@ -220,24 +222,30 @@ export default function AdminRatingReviewPage() {
   return (
     <div className="w-full space-y-4 sm:space-y-5 animate-in fade-in duration-300">
       {/* 1. TOP HERO BANNER */}
-      <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-white border border-[#EDEDE8] shadow-xs h-[190px] sm:h-[210px] lg:h-[225px] flex items-center w-full shrink-0">
-        <div className="absolute inset-0 w-full h-full pointer-events-none select-none">
+      <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-white via-[#FCFBF7] to-[#F5F3EB] border border-[#EDEDE8] shadow-xs min-h-[175px] sm:min-h-[195px] lg:h-[220px] py-4 sm:py-5 flex items-center w-full shrink-0">
+        {/* Background photo - visible only on wide screens (xl+) strictly confined to the right half to prevent text collision */}
+        <div className="hidden xl:block absolute right-0 top-0 bottom-0 w-1/2 pointer-events-none select-none overflow-hidden">
           <Image
             src="/admin-banner.jpg"
             alt="Rating and Review Management Banner"
             fill
             priority
-            className="object-cover"
-            style={{ objectPosition: "right 19%" }}
+            className="object-cover object-right"
           />
+          {/* Smooth gradient mask blending image into background card */}
+          <div className="absolute inset-0 bg-gradient-to-r from-[#FCFBF7] via-[#FCFBF7]/50 to-transparent" />
         </div>
 
-        <div className="relative z-10 w-full px-6 sm:px-8 lg:px-12 flex flex-col justify-center">
+        {/* Ambient glow accents on smaller screens */}
+        <div className="xl:hidden pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[#E5E9CA]/40 blur-2xl" />
+        <div className="xl:hidden pointer-events-none absolute -left-12 -bottom-12 h-36 w-36 rounded-full bg-[#E5E9CA]/25 blur-2xl" />
+
+        <div className="relative z-10 w-full px-4 sm:px-8 lg:px-12 py-2 sm:py-4 flex flex-col justify-center">
           <div className="max-w-2xl">
-            <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#555550]">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.2em] text-[#555550]">
               Quality &amp; Feedback
             </span>
-            <h1 className="font-caslon text-2xl sm:text-3xl lg:text-4xl font-bold text-[#111111] tracking-tight leading-tight mt-1">
+            <h1 className="font-caslon text-xl sm:text-3xl lg:text-4xl font-bold text-[#111111] tracking-tight leading-tight mt-1 break-words">
               Rating and Review Management
             </h1>
             <p className="text-xs sm:text-sm text-zinc-700 mt-1 sm:mt-1.5 font-medium leading-relaxed">
@@ -248,9 +256,9 @@ export default function AdminRatingReviewPage() {
       </div>
 
       {/* Ratings Overview Card */}
-      <div className="rounded-2xl sm:rounded-3xl bg-white border border-[#EDEDE8] p-6 sm:p-7 shadow-xs grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center">
+      <div className="rounded-2xl sm:rounded-3xl bg-white border border-[#EDEDE8] p-4 sm:p-6 lg:p-7 shadow-xs grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-8 items-center">
         {/* Score Column */}
-        <div className="lg:col-span-4 text-center lg:text-left lg:border-r border-[#EDEDE8] lg:pr-6">
+        <div className="lg:col-span-4 text-center lg:text-left pb-5 lg:pb-0 border-b lg:border-b-0 lg:border-r border-[#EDEDE8] lg:pr-6">
           <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#7A7A74]">
             Overall Platform Score
           </span>
@@ -295,14 +303,14 @@ export default function AdminRatingReviewPage() {
                 onClick={() =>
                   setSelectedRating(isSelected ? "ALL" : item.stars.toString())
                 }
-                className={`w-full flex items-center gap-3 py-1.5 px-2.5 rounded-xl text-xs transition-colors cursor-pointer group text-left ${
+                className={`w-full flex items-center gap-2.5 sm:gap-3 py-1.5 px-2 sm:px-2.5 rounded-xl text-xs transition-colors cursor-pointer group text-left ${
                   isSelected
                     ? "bg-stone-100 ring-1 ring-stone-300"
                     : "hover:bg-stone-50"
                 }`}
                 title={`Filter by ${item.label}`}
               >
-                <div className="w-16 flex items-center gap-1 shrink-0">
+                <div className="w-12 sm:w-16 flex items-center gap-1 shrink-0">
                   <span className="font-semibold text-stone-800">
                     {item.stars}
                   </span>
@@ -321,11 +329,11 @@ export default function AdminRatingReviewPage() {
                   />
                 </div>
 
-                <div className="w-20 text-right flex items-center justify-end gap-1.5 shrink-0">
+                <div className="w-16 sm:w-20 text-right flex items-center justify-end gap-1.5 shrink-0">
                   <span className="text-[11px] text-stone-400 font-mono hidden sm:inline">
                     ({item.count})
                   </span>
-                  <span className="w-9 text-right text-stone-600 font-mono font-medium">
+                  <span className="w-8 sm:w-9 text-right text-stone-600 font-mono font-medium">
                     {item.percentage}%
                   </span>
                 </div>
@@ -338,7 +346,7 @@ export default function AdminRatingReviewPage() {
       {/* 2. SEARCH & WORKING FILTERS BAR */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
         {/* Left: Search Bar */}
-        <div className="relative flex-1 max-w-md">
+        <div className="relative w-full sm:max-w-md">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
           <input
             type="text"
@@ -360,12 +368,13 @@ export default function AdminRatingReviewPage() {
         </div>
 
         {/* Right: Simple Rating Dropdown + Reset */}
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-2.5 w-full sm:w-auto">
           <CustomDropdown
             value={selectedRating}
             onChange={(val) => setSelectedRating(val)}
             options={RATING_OPTIONS}
             ariaLabel="Filter by Rating"
+            className="flex-1 sm:flex-none"
           />
 
           {(selectedRating !== "ALL" || search !== "") && (
@@ -375,7 +384,7 @@ export default function AdminRatingReviewPage() {
                 setSelectedRating("ALL");
                 setSearch("");
               }}
-              className="text-xs text-stone-500 hover:text-black font-normal transition-colors cursor-pointer py-1 px-2 rounded-lg hover:bg-stone-100"
+              className="text-xs text-stone-500 hover:text-black font-normal transition-colors cursor-pointer py-2 px-3 rounded-xl hover:bg-stone-100 border border-[#EDEDE8] sm:border-0"
             >
               Reset
             </button>
@@ -434,7 +443,7 @@ export default function AdminRatingReviewPage() {
               </div>
 
               {/* Right: Stars Rating + Date */}
-              <div className="flex items-center gap-3.5 shrink-0 self-end md:self-center pl-11 md:pl-0">
+              <div className="flex items-center justify-between md:justify-end gap-3.5 shrink-0 w-full md:w-auto pt-2.5 md:pt-0 border-t border-stone-100 md:border-0 pl-11 md:pl-0">
                 {/* Rating Badge */}
                 <div className="flex items-center gap-1.5 bg-amber-50/80 px-2.5 py-1 rounded-lg border border-amber-200/50">
                   <span className="font-mono font-bold text-xs text-amber-900">
@@ -460,7 +469,6 @@ export default function AdminRatingReviewPage() {
                     ? rev.date
                     : new Date(rev.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
                 </span>
-
               </div>
             </div>
           ))

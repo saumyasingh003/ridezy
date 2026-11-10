@@ -28,9 +28,10 @@ export default function Navbar() {
           w-full
           items-center
           justify-between
-          px-6
-          py-5
+          px-4
+          py-3
           sm:px-10
+          sm:py-5
           lg:px-14
         "
       >
@@ -43,8 +44,10 @@ export default function Navbar() {
           <span
             className="
               flex
-              h-10
-              w-10
+              h-9
+              w-9
+              sm:h-10
+              sm:w-10
               items-center
               justify-center
               rounded-full
@@ -55,14 +58,14 @@ export default function Navbar() {
           >
             <svg
               viewBox="0 0 24 24"
-              className="h-5 w-5"
+              className="h-4 w-4 sm:h-5 sm:w-5"
               fill="currentColor"
               aria-hidden="true"
             >
               <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z" />
             </svg>
           </span>
-          <span className="text-xl font-bold tracking-[-0.03em] text-[#111111]">
+          <span className="text-lg sm:text-xl font-bold tracking-[-0.03em] text-[#111111]">
             Ridezy
           </span>
         </Link>
@@ -94,9 +97,12 @@ export default function Navbar() {
                     className={`
                       block
                       rounded-full
-                      px-5
-                      py-2
-                      text-sm
+                      px-3.5
+                      py-1.5
+                      sm:px-5
+                      sm:py-2
+                      text-xs
+                      sm:text-sm
                       font-semibold
                       transition-colors
                       duration-200

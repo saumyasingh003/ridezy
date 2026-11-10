@@ -57,25 +57,24 @@ export default function Footer() {
             flex
             items-center
             bg-[#CDD09B]
-            bg-[url('/footer-cta-banner.webp')]
-            bg-cover
-            bg-left
-            bg-no-repeat
-            px-7
-            py-9
+            md:bg-[url('/footer-cta-banner.webp')]
+            md:bg-cover
+            md:bg-right
+            md:bg-no-repeat
+            px-4
+            py-8
             sm:px-10
             sm:py-11
-            md:bg-right
             lg:aspect-[2046/379]
             lg:px-14
             lg:py-0
           "
         >
-          <div className="relative z-10 max-w-md">
-            <h2 className="font-caslon text-3xl sm:text-4xl font-bold tracking-tight text-[#111111]">
+          <div className="relative z-10 max-w-md w-full">
+            <h2 className="font-caslon text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-[#111111]">
               Ready to Ride?
             </h2>
-            <p className="mt-2 text-sm sm:text-[15px] leading-6 text-[#3F4537]">
+            <p className="mt-2 text-xs sm:text-sm lg:text-[15px] leading-relaxed text-[#3F4537]">
               Track your rides, payments and trips — all in one place.
             </p>
 
@@ -83,15 +82,22 @@ export default function Footer() {
               href="/dashboard"
               className="
                 group
-                mt-6
+                mt-5
+                sm:mt-6
                 inline-flex
+                w-full
+                sm:w-auto
                 items-center
+                justify-center
                 gap-2.5
                 rounded-xl
                 bg-[#111111]
-                px-6
-                py-3.5
-                text-[15px]
+                px-5
+                sm:px-6
+                py-3
+                sm:py-3.5
+                text-sm
+                sm:text-[15px]
                 font-semibold
                 text-white
                 shadow-[0_8px_18px_-8px_rgba(0,0,0,0.5)]
@@ -99,6 +105,7 @@ export default function Footer() {
                 duration-300
                 hover:-translate-y-0.5
                 hover:bg-black
+                active:scale-[0.98]
               "
             >
               <LayoutDashboard size={18} strokeWidth={2} />
@@ -117,30 +124,35 @@ export default function Footer() {
         =================================================== */}
         <div
           className="
+            max-w-7xl
+            mx-auto
             grid
             grid-cols-2
             px-4
-            sm:px-6
-            lg:px-8
-            gap-x-8
-            gap-y-10
-            py-12
+            sm:px-8
+            lg:px-14
+            gap-x-6
+            sm:gap-x-8
+            gap-y-8
+            sm:gap-y-10
+            py-10
+            sm:py-12
             sm:grid-cols-3
-            lg:grid-cols-[1.4fr_1fr_1fr_1fr_1.2fr]
+            lg:grid-cols-[1.3fr_1fr_1fr_1fr_1.3fr]
           "
         >
           {/* Brand */}
           <div className="col-span-2 sm:col-span-3 lg:col-span-1">
-            <a href="#" className="flex items-center gap-2">
-              <svg viewBox="0 0 24 24" className="h-7 w-7 text-[#214D2A]" fill="currentColor" aria-hidden="true">
+            <Link href="/" className="flex items-center gap-2">
+              <svg viewBox="0 0 24 24" className="h-6 w-6 sm:h-7 sm:w-7 text-[#214D2A]" fill="currentColor" aria-hidden="true">
                 <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z" />
               </svg>
-              <span className="text-2xl font-bold tracking-[-0.03em] text-[#111111]">
+              <span className="text-xl sm:text-2xl font-bold tracking-[-0.03em] text-[#111111]">
                 Ridezy
               </span>
-            </a>
+            </Link>
           
-            <address className="mt-4 ml-3 max-w-[240px] border-l-2 border-[#214D2A]/20 pl-3 text-[13px] not-italic leading-5 text-[#7A7A75]">
+            <address className="mt-3 sm:mt-4 ml-1 sm:ml-3 max-w-[260px] border-l-2 border-[#214D2A]/20 pl-3 text-xs sm:text-[13px] not-italic leading-relaxed text-[#7A7A75]">
               4th Floor, Prestige Tech Park,
               <br />
               Outer Ring Road, Marathahalli,
@@ -150,39 +162,24 @@ export default function Footer() {
           </div>
 
           {linkGroups.map((group) => (
-            <div key={group.title}>
-              <h3 className="text-sm font-semibold text-[#111111]">
+            <div key={group.title} className="min-w-0">
+              <h3 className="text-xs sm:text-sm font-semibold uppercase tracking-wider text-[#111111]">
                 {group.title}
               </h3>
-              <ul className="mt-4 space-y-2.5">
+              <ul className="mt-3 sm:mt-4 space-y-2 sm:space-y-2.5">
                 {group.links.map((link) => (
                   <li key={link}>
                     <a
                       href={LINK_HREFS[link] ?? "#"}
                       className="
                         relative
-                        text-sm
+                        text-xs
+                        sm:text-sm
                         text-[#686863]
                         transition-colors
                         duration-200
-                        after:absolute
-                        after:-bottom-0.5
-                        after:left-0
-                        after:h-[1.5px]
-                        after:w-full
-                        after:origin-left
-                        after:scale-x-0
-                        after:rounded-full
-                        after:bg-[#214D2A]
-                        after:transition-transform
-                        after:duration-300
-                        after:ease-out
+                        break-words
                         hover:text-[#214D2A]
-                        hover:after:scale-x-100
-                        focus-visible:text-[#214D2A]
-                        focus-visible:outline-none
-                        focus-visible:after:scale-x-100
-                        active:after:scale-x-100
                       "
                     >
                       {link}
@@ -194,8 +191,8 @@ export default function Footer() {
           ))}
 
           {/* Social + copyright */}
-          <div className="col-span-2 sm:col-span-3 lg:col-span-1 lg:justify-self-end">
-            <div className="flex items-center gap-2">
+          <div className="col-span-2 sm:col-span-3 lg:col-span-1 lg:justify-self-end pt-4 sm:pt-0 border-t border-[#EDEDE8] sm:border-0">
+            <div className="flex items-center gap-2 flex-wrap">
               {socials.map((s) => (
                 <a
                   key={s.label}
@@ -203,8 +200,10 @@ export default function Footer() {
                   aria-label={s.label}
                   className="
                     flex
-                    h-9
-                    w-9
+                    h-8
+                    w-8
+                    sm:h-9
+                    sm:w-9
                     items-center
                     justify-center
                     rounded-full
@@ -215,16 +214,16 @@ export default function Footer() {
                     hover:text-[#214D2A]
                   "
                 >
-                  <svg viewBox="0 0 24 24" className="h-[17px] w-[17px]" fill="currentColor">
+                  <svg viewBox="0 0 24 24" className="h-4 w-4 sm:h-[17px] sm:w-[17px]" fill="currentColor">
                     <path d={s.path} />
                   </svg>
                 </a>
               ))}
             </div>
-            <p className="mt-4 text-sm text-[#686863] lg:text-right">
+            <p className="mt-3 sm:mt-4 text-xs sm:text-sm text-[#686863] lg:text-right">
               © {new Date().getFullYear()} Ridezy. All rights reserved.
             </p>
-            <p className="mt-1.5 text-sm text-[#686863] lg:text-right">
+            <p className="mt-1 sm:mt-1.5 text-xs sm:text-sm text-[#686863] lg:text-right">
               Designed &amp; built by{" "}
               <a
                 href={PORTFOLIO_URL}

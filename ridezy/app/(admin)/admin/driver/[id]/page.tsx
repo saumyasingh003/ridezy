@@ -1628,22 +1628,12 @@ export default function DriverDetailPage() {
 
 
       {/* 1. TOP HERO PROFILE HEADER */}
-      <div className="rounded-3xl bg-[#F4ECE1] border border-[#E6DDD2] shadow-xs p-5 sm:p-6 lg:p-7 transition-all">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-          <div className="flex items-center gap-4 sm:gap-5">
-            {/* Back Arrow Button */}
-            <Link
-              href="/admin/driver"
-              className="w-10 h-10 rounded-full bg-white/80 hover:bg-white border border-[#E0D7CC] flex items-center justify-center text-stone-700 hover:text-black transition-all shadow-2xs hover:shadow-xs group cursor-pointer shrink-0"
-              title="Back to Driver Management"
-              aria-label="Back to Driver Management"
-            >
-              <ArrowLeft className="w-4 h-4 sm:w-4.5 sm:h-4.5 group-hover:-translate-x-0.5 transition-transform" />
-            </Link>
-
+      <div className="rounded-2xl sm:rounded-3xl bg-[#F4ECE1] border border-[#E6DDD2] shadow-xs p-4 sm:p-6 lg:p-7 transition-all">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-6">
+          <div className="flex items-start sm:items-center gap-3 sm:gap-5 min-w-0 flex-1">
             {/* Avatar with Status Dot */}
             <div className="relative shrink-0">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-[#111111] text-white flex items-center justify-center font-caslon font-bold text-2xl sm:text-3xl shadow-xs border-2 border-white overflow-hidden">
+              <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-2xl bg-[#111111] text-white flex items-center justify-center font-caslon font-bold text-xl sm:text-3xl shadow-xs border-2 border-white overflow-hidden">
                 {driver.profileImage ? (
                   <img
                     src={driver.profileImage}
@@ -1655,7 +1645,7 @@ export default function DriverDetailPage() {
                 )}
               </div>
               <span
-                className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white shadow-xs ${
+                className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full border-2 border-white shadow-xs ${
                   driver.availabilityStatus === "AVAILABLE" ? "bg-emerald-500" : "bg-stone-400"
                 }`}
                 title={`Status: ${driver.availabilityStatus || "OFFLINE"}`}
@@ -1663,15 +1653,15 @@ export default function DriverDetailPage() {
             </div>
 
             {/* Basic Info */}
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="font-caslon text-2xl sm:text-3xl lg:text-[32px] font-bold text-[#111111] tracking-tight">
+            <div className="space-y-1 min-w-0 flex-1">
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                <h1 className="font-caslon text-xl sm:text-3xl lg:text-[32px] font-bold text-[#111111] tracking-tight break-words">
                   {driver.name}
                 </h1>
                 {/* Availability Text (bold and uppercase without bg) */}
                 {driver.availabilityStatus && (
                   <span
-                    className={`text-xs sm:text-sm font-bold uppercase tracking-wider ${
+                    className={`text-[11px] sm:text-sm font-bold uppercase tracking-wider ${
                       driver.availabilityStatus === "AVAILABLE"
                         ? "text-emerald-600"
                         : driver.availabilityStatus === "BUSY"
@@ -1689,28 +1679,28 @@ export default function DriverDetailPage() {
                 )}
               </div>
 
-              <div className="flex items-center gap-3 text-xs sm:text-sm text-stone-600 flex-wrap">
+              <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm text-stone-600 flex-wrap">
                 <span className="font-semibold text-stone-900 flex items-center gap-1">
                   <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
                   {driver.rating && driver.rating > 0 ? Number(driver.rating).toFixed(1) : "0.0"}
                 </span>
                 <span>·</span>
-                <span>{driver.totalTrips || 0} completed rides</span>
+                <span>{driver.totalTrips || 0} rides</span>
                 <span>·</span>
-                <span>Registered {formatDate(driver.createdAt || driver.user?.createdAt)}</span>
+                <span className="truncate">Reg. {formatDate(driver.createdAt || driver.user?.createdAt)}</span>
               </div>
             </div>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-2.5 shrink-0 self-start sm:self-center flex-wrap">
+          <div className="flex items-center gap-2 sm:gap-2.5 w-full sm:w-auto pt-3 sm:pt-0 border-t border-black/10 sm:border-t-0 flex-wrap">
             {isPending && (
               <>
                 <button
                   type="button"
                   disabled={actionInProgress}
                   onClick={() => setRejectModalOpen(true)}
-                  className="px-4 py-2 rounded-lg border border-rose-200/90 bg-white text-rose-600 hover:bg-rose-50 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
+                  className="flex-1 sm:flex-none justify-center px-4 py-2 rounded-xl border border-rose-200/90 bg-white text-rose-600 hover:bg-rose-50 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
                 >
                   Reject
                 </button>
@@ -1718,7 +1708,7 @@ export default function DriverDetailPage() {
                   type="button"
                   disabled={actionInProgress}
                   onClick={handleVerify}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-black hover:bg-neutral-800 text-white text-xs font-semibold transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+                  className="flex-1 sm:flex-none justify-center inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-black hover:bg-neutral-800 text-white text-xs font-semibold transition-colors cursor-pointer shadow-xs disabled:opacity-50"
                 >
                   <Check className="w-3.5 h-3.5" />
                   <span>Approve</span>
@@ -1728,7 +1718,7 @@ export default function DriverDetailPage() {
 
             {isVerified && (
               <>
-                <div className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-100/90 border border-emerald-300 text-emerald-900 text-xs font-semibold shadow-2xs">
+                <div className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-100/90 border border-emerald-300 text-emerald-900 text-xs font-semibold shadow-2xs">
                   <ShieldCheck className="w-4 h-4 text-emerald-700" />
                   <span>Verified Partner</span>
                 </div>
@@ -1736,7 +1726,7 @@ export default function DriverDetailPage() {
                   type="button"
                   disabled={actionInProgress}
                   onClick={() => setSuspendModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
                   title="Suspend Driver"
                 >
                   <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
@@ -1747,7 +1737,7 @@ export default function DriverDetailPage() {
 
             {isSuspended && (
               <>
-                <div className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-100 border border-amber-300 text-amber-900 text-xs font-semibold shadow-2xs">
+                <div className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-100 border border-amber-300 text-amber-900 text-xs font-semibold shadow-2xs">
                   <AlertTriangle className="w-4 h-4 text-amber-700" />
                   <span>Suspended Partner</span>
                 </div>
@@ -1755,11 +1745,11 @@ export default function DriverDetailPage() {
                   type="button"
                   disabled={actionInProgress}
                   onClick={handleActivate}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
                   title="Re-activate Driver"
                 >
                   <Check className="w-3.5 h-3.5" />
-                  <span>Re-Activate Driver</span>
+                  <span>Re-Activate</span>
                 </button>
               </>
             )}
@@ -1769,7 +1759,7 @@ export default function DriverDetailPage() {
                 type="button"
                 disabled={actionInProgress}
                 onClick={handleVerify}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-stone-300 bg-white text-stone-700 hover:bg-stone-50 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-stone-300 bg-white text-stone-700 hover:bg-stone-50 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Re-Approve</span>
@@ -1781,7 +1771,7 @@ export default function DriverDetailPage() {
               type="button"
               disabled={actionInProgress}
               onClick={openEditModal}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-400 hover:bg-amber-500 border border-amber-500/80 text-stone-950 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 shadow-2xs active:scale-[0.98]"
+              className="flex-1 sm:flex-none justify-center inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-500 border border-amber-500/80 text-stone-950 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 shadow-2xs active:scale-[0.98]"
               title="Edit Driver Profile"
             >
               <Pencil className="w-3.5 h-3.5 text-stone-950" />
@@ -1793,11 +1783,11 @@ export default function DriverDetailPage() {
               type="button"
               disabled={actionInProgress}
               onClick={() => setDeleteModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 border border-rose-700 text-white text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 shadow-2xs active:scale-[0.98]"
+              className="flex-1 sm:flex-none justify-center inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 border border-rose-700 text-white text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 shadow-2xs active:scale-[0.98]"
               title="Delete Driver Profile"
             >
               <Trash2 className="w-3.5 h-3.5 text-white" />
-              <span>Delete Profile</span>
+              <span>Delete</span>
             </button>
           </div>
         </div>
@@ -1831,9 +1821,9 @@ export default function DriverDetailPage() {
       </div>
 
       {/* 2. 2-COLUMN GRID OF DETAILS */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* CARD 1: PERSONAL DETAILS */}
-        <div className="rounded-3xl bg-white border border-[#EDEDE8] shadow-xs p-6 sm:p-8 space-y-5">
+        <div className="rounded-2xl sm:rounded-3xl bg-white border border-[#EDEDE8] shadow-xs p-4 sm:p-6 lg:p-8 space-y-4 sm:space-y-5">
           <div className="flex items-center justify-between border-b border-[#EDEDE8] pb-4">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-stone-100 border border-stone-200/80 flex items-center justify-center text-stone-700">
@@ -1848,7 +1838,7 @@ export default function DriverDetailPage() {
           {/* 1 Data per Line without background */}
           <div className="divide-y divide-[#F0EFEA] text-xs sm:text-sm">
             {/* Full Name */}
-            <div className="py-3 flex items-center justify-between gap-4">
+            <div className="py-2.5 sm:py-3 flex items-center justify-between gap-3 sm:gap-4">
               <div className="flex items-center gap-2.5 text-stone-500">
                 <User className="w-4 h-4 text-stone-400 shrink-0" />
                 <span className="text-stone-500">Full Name</span>
@@ -1859,14 +1849,14 @@ export default function DriverDetailPage() {
             </div>
 
             {/* Email Address */}
-            <div className="py-3 flex items-center justify-between gap-4">
+            <div className="py-2.5 sm:py-3 flex items-center justify-between gap-3 sm:gap-4">
               <div className="flex items-center gap-2.5 text-stone-500">
                 <Mail className="w-4 h-4 text-stone-400 shrink-0" />
                 <span className="text-stone-500">Email Address</span>
               </div>
               <a
                 href={`mailto:${driver.email}`}
-                className="text-stone-800 hover:underline text-right truncate"
+                className="text-stone-800 hover:underline text-right truncate max-w-[170px] sm:max-w-xs"
                 title={driver.email}
               >
                 {driver.email || "—"}
@@ -1874,7 +1864,7 @@ export default function DriverDetailPage() {
             </div>
 
             {/* Phone Number */}
-            <div className="py-3 flex items-center justify-between gap-4">
+            <div className="py-2.5 sm:py-3 flex items-center justify-between gap-3 sm:gap-4">
               <div className="flex items-center gap-2.5 text-stone-500">
                 <Phone className="w-4 h-4 text-stone-400 shrink-0" />
                 <span className="text-stone-500">Phone Number</span>
@@ -1885,7 +1875,7 @@ export default function DriverDetailPage() {
             </div>
 
             {/* Date of Birth */}
-            <div className="py-3 flex items-center justify-between gap-4">
+            <div className="py-2.5 sm:py-3 flex items-center justify-between gap-3 sm:gap-4">
               <div className="flex items-center gap-2.5 text-stone-500">
                 <CalendarDays className="w-4 h-4 text-stone-400 shrink-0" />
                 <span className="text-stone-500">Date of Birth</span>
@@ -1896,7 +1886,7 @@ export default function DriverDetailPage() {
             </div>
 
             {/* Gender */}
-            <div className="py-3 flex items-center justify-between gap-4">
+            <div className="py-2.5 sm:py-3 flex items-center justify-between gap-3 sm:gap-4">
               <div className="flex items-center gap-2.5 text-stone-500">
                 <Shield className="w-4 h-4 text-stone-400 shrink-0" />
                 <span className="text-stone-500">Gender</span>
@@ -1907,19 +1897,19 @@ export default function DriverDetailPage() {
             </div>
 
             {/* Driving License */}
-            <div className="py-3 flex items-center justify-between gap-4">
+            <div className="py-2.5 sm:py-3 flex items-center justify-between gap-3 sm:gap-4">
               <div className="flex items-center gap-2.5 text-stone-500">
                 <FileBadge className="w-4 h-4 text-stone-400 shrink-0" />
                 <span className="text-stone-500">Driving License (DL)</span>
               </div>
-              <span className="font-mono text-stone-800 text-right">
+              <span className="font-mono text-stone-800 text-right break-all sm:break-normal">
                 {driver.licenseNumber}
               </span>
             </div>
 
             {/* Registration Plate */}
             {driver.vehicle && (
-              <div className="py-3 flex items-center justify-between gap-4">
+              <div className="py-2.5 sm:py-3 flex items-center justify-between gap-3 sm:gap-4">
                 <div className="flex items-center gap-2.5 text-stone-500">
                   <FileBadge className="w-4 h-4 text-stone-400 shrink-0" />
                   <span className="text-stone-500">Registration Plate</span>
@@ -1932,7 +1922,7 @@ export default function DriverDetailPage() {
 
             {/* Vehicle Type */}
             {driver.vehicle && (
-              <div className="py-3 flex items-center justify-between gap-4">
+              <div className="py-2.5 sm:py-3 flex items-center justify-between gap-3 sm:gap-4">
                 <div className="flex items-center gap-2.5 text-stone-500">
                   <Car className="w-4 h-4 text-stone-400 shrink-0" />
                   <span className="text-stone-500">Vehicle Type</span>
@@ -1944,7 +1934,7 @@ export default function DriverDetailPage() {
             )}
 
             {/* Registration Date */}
-            <div className="py-3 flex items-center justify-between gap-4">
+            <div className="py-2.5 sm:py-3 flex items-center justify-between gap-3 sm:gap-4">
               <div className="flex items-center gap-2.5 text-stone-500">
                 <Calendar className="w-4 h-4 text-stone-400 shrink-0" />
                 <span className="text-stone-500">Registration Date</span>
@@ -1955,7 +1945,7 @@ export default function DriverDetailPage() {
             </div>
 
             {/* Role */}
-            <div className="py-3 flex items-center justify-between gap-4">
+            <div className="py-2.5 sm:py-3 flex items-center justify-between gap-3 sm:gap-4">
               <div className="flex items-center gap-2.5 text-stone-500">
                 <BadgeCheck className="w-4 h-4 text-stone-400 shrink-0" />
                 <span className="text-stone-500">Role</span>
@@ -1964,13 +1954,11 @@ export default function DriverDetailPage() {
                 Driver Partner
               </span>
             </div>
-
-
           </div>
         </div>
 
         {/* CARD 2: VEHICLE & REGISTRATION DETAILS */}
-        <div className="rounded-3xl bg-white border border-[#EDEDE8] shadow-xs p-6 sm:p-8 space-y-5">
+        <div className="rounded-2xl sm:rounded-3xl bg-white border border-[#EDEDE8] shadow-xs p-4 sm:p-6 lg:p-8 space-y-4 sm:space-y-5">
           <div className="flex items-center justify-between border-b border-[#EDEDE8] pb-4">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-stone-100 border border-stone-200/80 flex items-center justify-center text-stone-700">
@@ -2146,7 +2134,7 @@ export default function DriverDetailPage() {
         };
 
         return (
-          <div className="rounded-3xl bg-white border border-[#EDEDE8] shadow-xs p-6 sm:p-8 space-y-6">
+          <div className="rounded-2xl sm:rounded-3xl bg-white border border-[#EDEDE8] shadow-xs p-4 sm:p-6 lg:p-8 space-y-5 sm:space-y-6">
             {/* Section Header */}
             <div
               onClick={() => setKycOpen((o) => !o)}
@@ -2588,7 +2576,7 @@ export default function DriverDetailPage() {
       })()}
 
       {/* 4. RIDE HISTORY & COMPLETED TRIPS TABLE */}
-      <div className="rounded-3xl bg-white border border-[#EDEDE8] shadow-xs p-6 sm:p-8 space-y-6">
+      <div className="rounded-2xl sm:rounded-3xl bg-white border border-[#EDEDE8] shadow-xs p-4 sm:p-6 lg:p-8 space-y-5 sm:space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#EDEDE8] pb-5">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-stone-100 border border-stone-200/80 flex items-center justify-center text-stone-700 shrink-0">
@@ -2610,8 +2598,8 @@ export default function DriverDetailPage() {
           </div>
 
           {/* Quick Metrics Bar */}
-          <div className="flex items-center gap-3">
-            <div className="px-3.5 py-1.5 rounded-2xl bg-[#FBFBFA] border border-[#EDEDE8] text-right">
+          <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
+            <div className="px-3 sm:px-3.5 py-1.5 rounded-2xl bg-[#FBFBFA] border border-[#EDEDE8] text-right flex-1 sm:flex-none">
               <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 block">
                 Completed
               </span>
@@ -2619,7 +2607,7 @@ export default function DriverDetailPage() {
                 {driver.rides?.filter((r) => r.status === "RIDE_COMPLETED").length ?? driver.totalTrips ?? 0} Trips
               </span>
             </div>
-            <div className="px-3.5 py-1.5 rounded-2xl bg-[#FBFBFA] border border-[#EDEDE8] text-right">
+            <div className="px-3 sm:px-3.5 py-1.5 rounded-2xl bg-[#FBFBFA] border border-[#EDEDE8] text-right flex-1 sm:flex-none">
               <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 block">
                 Total Earnings
               </span>
@@ -2632,11 +2620,11 @@ export default function DriverDetailPage() {
 
         {/* Filter Pills if rides exist */}
         {driver.rides && driver.rides.length > 0 && (
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex items-center gap-1.5 sm:gap-2 text-xs overflow-x-auto no-scrollbar pb-1">
             <button
               type="button"
               onClick={() => setRideFilter("ALL")}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 rideFilter === "ALL"
                   ? "bg-stone-900 text-white font-semibold"
                   : "bg-stone-100 text-stone-600 hover:bg-stone-200"
@@ -2647,7 +2635,7 @@ export default function DriverDetailPage() {
             <button
               type="button"
               onClick={() => setRideFilter("COMPLETED")}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 rideFilter === "COMPLETED"
                   ? "bg-emerald-800 text-white font-semibold"
                   : "bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
@@ -2658,7 +2646,7 @@ export default function DriverDetailPage() {
             <button
               type="button"
               onClick={() => setRideFilter("CANCELLED")}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 rideFilter === "CANCELLED"
                   ? "bg-rose-800 text-white font-semibold"
                   : "bg-rose-50 text-rose-800 hover:bg-rose-100"
@@ -2706,8 +2694,8 @@ export default function DriverDetailPage() {
           }
 
           return (
-            <div className="overflow-x-auto rounded-2xl border border-[#EDEDE8]">
-              <table className="w-full text-left border-collapse">
+            <div className="overflow-x-auto rounded-xl sm:rounded-2xl border border-[#EDEDE8]">
+              <table className="w-full text-left border-collapse min-w-[620px]">
                 <thead>
                   <tr className="border-b border-[#EDEDE8] bg-[#FBFBFA] text-[11px] font-bold uppercase tracking-wider text-stone-500">
                     <th className="py-3 px-4">Trip ID &amp; Date</th>

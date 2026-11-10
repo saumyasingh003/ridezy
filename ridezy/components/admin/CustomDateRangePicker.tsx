@@ -238,7 +238,7 @@ export default function CustomDateRangePicker({
 
       {/* Popover Calendar Modal */}
       {isOpen && (
-        <div className="absolute right-0 sm:left-0 lg:right-0 lg:left-auto top-full mt-2 z-50 w-[320px] sm:w-[340px] bg-white rounded-2xl border border-stone-200 shadow-2xl p-4 animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute right-0 sm:left-0 lg:right-0 lg:left-auto top-full mt-2 z-50 w-[320px] sm:w-[340px] max-w-[calc(100vw-2rem)] bg-white rounded-2xl border border-stone-200 shadow-2xl p-4 animate-in fade-in zoom-in-95 duration-150">
           {/* Quick Presets Strip */}
           <div className="flex items-center justify-between gap-1 pb-3 mb-3 border-b border-stone-100 flex-wrap">
             <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">
